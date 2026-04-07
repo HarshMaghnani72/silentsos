@@ -1,0 +1,115 @@
+# Gradle files
+.gradle/
+build/
+*.jar
+*.aar
+
+# Local configuration file (SDK path, etc)
+local.properties
+
+# Log files
+*.log
+logs/
+
+# Android Studio
+.idea/
+.DS_Store
+*.iml
+*.iws
+*.ipr
+*.swp
+*.swo
+*~
+
+# Build outputs
+bin/
+out/
+gen/
+.externalNativeBuild/
+.cxx/
+
+# Kotlin
+*.kotlin_module
+
+# Compiled files
+*.class
+*.o
+
+# IntelliJ
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Git
+.git/
+
+# OS
+.DS_Store
+Thumbs.db
+.windows
+.mac
+
+# NDK
+obj/
+
+# Google Services
+google-services.json
+
+# Sensitive files
+*.keystore
+*.key
+*.pem
+secrets.properties
+keystore.properties
+
+# Backups
+*.bak
+*.swp
+*.swo
+
+# Gradle wrapper files (if not committed)
+# gradle-wrapper.jar
+
+# External libraries
+/libs/
+
+# Test coverage
+coverage/
+*.coverage
+
+# Temporary files
+*.tmp
+temp/
+
+# Node modules (if using npm/yarn for any scripts)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Python cache (if using any Python scripts)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Fastlane
+fastlane/report.xml
+fastlane/preview.html
+fastlane/screenshots/
+fastlane/test_output/
+
+# Firebase emulator
+.emulatorrc
+
+# Android Emulator
+.android/
+emulator.ini
+
+# Misc
+.attach_pid*
+capture.jar
