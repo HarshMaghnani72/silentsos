@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -209,8 +210,8 @@ fun AddContactScreen(
 private fun PriorityOption(
     label: String,
     isSelected: Boolean,
-    accentColor: androidx.compose.ui.graphics.Color,
-    bgColor: androidx.compose.ui.graphics.Color,
+    accentColor: Color,
+    bgColor: Color,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
