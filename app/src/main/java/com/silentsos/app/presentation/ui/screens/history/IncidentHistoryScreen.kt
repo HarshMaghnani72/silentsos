@@ -15,7 +15,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -24,11 +23,15 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.silentsos.app.domain.model.SOSEvent
 import com.silentsos.app.domain.model.SOSStatus
+import com.silentsos.app.domain.model.TriggerType
 import com.silentsos.app.presentation.viewmodel.HistoryViewModel
 import com.silentsos.app.ui.components.SecureTopBar
 import com.silentsos.app.ui.components.StatusPill
 import com.silentsos.app.ui.components.PillType
 import com.silentsos.app.ui.theme.*
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun IncidentHistoryScreen(
@@ -36,6 +39,17 @@ fun IncidentHistoryScreen(
     viewModel: HistoryViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val dateFormat = remember { SimpleDateFormat("MMM dd, h:mm a", Locale.getDefault()) }
+
+    // Filter events based on search query
+    val filteredEvents = remember(uiState.events, uiState.searchQuery) {
+        if (uiState.searchQuery.isBlank()) uiState.events
+        else uiState.events.filter { event ->
+            event.triggerType.name.contains(uiState.searchQuery, ignoreCase = true) ||
+            event.status.name.contains(uiState.searchQuery, ignoreCase = true) ||
+            dateFormat.format(Date(event.startedAt)).contains(uiState.searchQuery, ignoreCase = true)
+        }
+    }
 
     Scaffold(
         topBar = { SecureTopBar(showNetworkIcon = true) },
@@ -107,235 +121,109 @@ fun IncidentHistoryScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // ── Featured Event Card ──
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(SurfaceContainer)
-            ) {
-                Column(modifier = Modifier.padding(24.dp)) {
-                    // Header row
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                            Box(
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .clip(CircleShape)
-                                    .background(TertiaryContainer),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(Icons.Default.Warning, contentDescription = null, tint = OnTertiaryContainer)
-                            }
-                            Column {
-                                Text("SOS Activated",
-                                    style = MaterialTheme.typography.titleLarge.copy(fontFamily = ManropeFontFamily, fontWeight = FontWeight.Bold),
-                                    color = OnSurface
-                                )
-                                Text("Aug 12, 10:45 PM • ID: SOS-88219",
-                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
-                                    color = OnSurfaceVariant
-                                )
-                            }
-                        }
-                        Button(
-                            onClick = { },
-                            shape = RoundedCornerShape(9999.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Secondary, contentColor = OnSecondary),
-                            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp)
-                        ) {
-                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Export Report", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Map placeholder + details bento
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        // Map
-                        Box(
-                            modifier = Modifier
-                                .weight(2f)
-                                .height(180.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(
-                                    Brush.verticalGradient(
-                                        colors = listOf(SurfaceContainerHigh, SurfaceDim)
-                                    )
-                                ),
-                            contentAlignment = Alignment.BottomStart
-                        ) {
-                            // Fake map grid
-                            Icon(Icons.Default.Map, contentDescription = null, tint = OnSurface.copy(alpha = 0.05f),
-                                modifier = Modifier.size(120.dp).align(Alignment.Center))
-
-                            // Coordinate overlay
-                            Row(
-                                modifier = Modifier
-                                    .padding(12.dp)
-                                    .clip(RoundedCornerShape(9999.dp))
-                                    .background(SurfaceContainerHighest.copy(alpha = 0.8f))
-                                    .border(1.dp, OutlineVariant.copy(alpha = 0.2f), RoundedCornerShape(9999.dp))
-                                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(Icons.Default.LocationOn, contentDescription = null, tint = Secondary, modifier = Modifier.size(14.dp))
-                                Text(
-                                    "LAT: 41.8781, LON: -87.6298",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace, fontSize = 10.sp
-                                    ),
-                                    color = OnSurface
-                                )
-                            }
-                        }
-
-                        // Side details
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            // Audio buffer
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .background(SurfaceContainerHigh)
-                                    .border(1.dp, OutlineVariant.copy(alpha = 0.1f), RoundedCornerShape(16.dp))
-                                    .padding(16.dp)
-                            ) {
-                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text("AUDIO BUFFER", style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant)
-                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(36.dp)
-                                                .clip(CircleShape)
-                                                .background(Secondary),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(Icons.Default.PlayArrow, contentDescription = null, tint = OnSecondary, modifier = Modifier.size(18.dp))
-                                        }
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .height(4.dp)
-                                                    .clip(RoundedCornerShape(2.dp))
-                                                    .background(SurfaceVariant)
-                                            ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth(0.33f)
-                                                        .fillMaxHeight()
-                                                        .background(Secondary)
-                                                )
-                                            }
-                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                                Text("0:12", style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp), color = OnSurfaceVariant)
-                                                Text("0:45", style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp), color = OnSurfaceVariant)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Contacts Alerted
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .background(SurfaceContainerHigh)
-                                    .border(1.dp, OutlineVariant.copy(alpha = 0.1f), RoundedCornerShape(16.dp))
-                                    .padding(16.dp)
-                            ) {
-                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text("CONTACTS ALERTED", style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant)
-                                    Row {
-                                        repeat(3) { i ->
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(32.dp)
-                                                    .offset(x = (-12 * i).dp)
-                                                    .clip(CircleShape)
-                                                    .background(SurfaceContainerHighest)
-                                                    .border(2.dp, SurfaceContainerHigh, CircleShape),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Icon(Icons.Default.Person, contentDescription = null, tint = OnSurfaceVariant, modifier = Modifier.size(16.dp))
-                                            }
-                                        }
-                                    }
-                                    Text("Local dispatch + 3 guardians.",
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Medium),
-                                        color = OnSurface
-                                    )
-                                }
-                            }
-                        }
+            // ── Loading State ──
+            if (uiState.isLoading) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = Secondary, strokeWidth = 2.dp)
+                }
+            }
+            // ── Empty State ──
+            else if (filteredEvents.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(SurfaceContainer)
+                        .padding(48.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Default.Shield,
+                            contentDescription = null,
+                            tint = OnSurfaceVariant.copy(alpha = 0.3f),
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            if (uiState.searchQuery.isNotBlank()) "No matching events" else "No incidents recorded",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                            color = OnSurface
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            if (uiState.searchQuery.isNotBlank()) "Try adjusting your search" else "Your safety record is clean",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = OnSurfaceVariant
+                        )
                     }
                 }
             }
+            // ── Events List ──
+            else {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    filteredEvents.forEach { event ->
+                        val (icon, iconTint, title) = getEventVisuals(event)
+                        val pillText = event.status.name
+                        val pillType = when (event.status) {
+                            SOSStatus.ACTIVE -> PillType.SUCCESS
+                            SOSStatus.CANCELLED -> PillType.NEUTRAL
+                            SOSStatus.RESOLVED -> PillType.SUCCESS
+                            SOSStatus.PENDING -> PillType.SYSTEM
+                        }
+                        val subtitle = buildString {
+                            append(dateFormat.format(Date(event.startedAt)))
+                            if (event.id.length >= 5) {
+                                append(" • ID: SOS-${event.id.takeLast(5).uppercase()}")
+                            }
+                        }
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // ── Historical Events List ──
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                HistoryListItem(
-                    icon = Icons.Default.VerifiedUser,
-                    iconTint = Secondary,
-                    title = "Test Mode Activation",
-                    subtitle = "Aug 10, 2:15 PM • System Diagnosis Clear",
-                    pillText = "PASSED",
-                    pillType = PillType.SUCCESS
-                )
-                HistoryListItem(
-                    icon = Icons.Default.History,
-                    iconTint = Outline,
-                    title = "Geofence Alert (Auto-Log)",
-                    subtitle = "Aug 08, 11:30 PM • Zone: Downtown South",
-                    pillText = "RESOLVED",
-                    pillType = PillType.NEUTRAL
-                )
-                HistoryListItem(
-                    icon = Icons.Default.WifiTethering,
-                    iconTint = Outline,
-                    title = "Network Handshake Sync",
-                    subtitle = "Aug 05, 09:00 AM • Routine integrity check",
-                    pillText = "SYSTEM",
-                    pillType = PillType.SYSTEM
-                )
-            }
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // ── Load More ──
-            OutlinedButton(
-                onClick = { },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                border = ButtonDefaults.outlinedButtonBorder.copy(
-                    brush = androidx.compose.ui.graphics.SolidColor(OutlineVariant.copy(alpha = 0.2f))
-                )
-            ) {
-                Icon(Icons.Default.ExpandMore, contentDescription = null, tint = OnSurfaceVariant, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Show Older Events",
-                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                    color = OnSurfaceVariant
-                )
+                        HistoryListItem(
+                            icon = icon,
+                            iconTint = iconTint,
+                            title = title,
+                            subtitle = subtitle,
+                            pillText = pillText,
+                            pillType = pillType
+                        )
+                    }
+                }
             }
         }
+    }
+}
+
+/** Maps event trigger type and status to visual icons and labels. */
+private fun getEventVisuals(event: SOSEvent): Triple<androidx.compose.ui.graphics.vector.ImageVector, Color, String> {
+    return when (event.triggerType) {
+        TriggerType.MANUAL -> Triple(
+            Icons.Default.Warning,
+            OnTertiaryContainer,
+            "SOS Activated"
+        )
+        TriggerType.POWER_BUTTON -> Triple(
+            Icons.Default.PowerSettingsNew,
+            OnTertiaryContainer,
+            "Power Button SOS"
+        )
+        TriggerType.SHAKE -> Triple(
+            Icons.Default.Vibration,
+            Secondary,
+            "Shake SOS Triggered"
+        )
+        TriggerType.DURESS_PIN -> Triple(
+            Icons.Default.Warning,
+            Error,
+            "Duress Alert"
+        )
+        TriggerType.SECRET_CODE -> Triple(
+            Icons.Default.Lock,
+            Secondary,
+            "Secret Code Trigger"
+        )
     }
 }
 
@@ -364,7 +252,8 @@ private fun HistoryListItem(
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.weight(1f)
             ) {
                 Box(
                     modifier = Modifier
@@ -375,7 +264,7 @@ private fun HistoryListItem(
                 ) {
                     Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(20.dp))
                 }
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(title,
                         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
                         color = OnSurface

@@ -16,13 +16,10 @@ class AuthRepositoryImpl @Inject constructor(
     override val currentUserId: String? get() = authDataSource.currentUserId
     override val isAuthenticated: Boolean get() = authDataSource.isAuthenticated
 
-    override fun sendOtp(
-        phoneNumber: String,
-        onCodeSent: (String) -> Unit,
-        onError: (Exception) -> Unit
-    ) {
-        // Note: Activity reference needed for reCAPTCHA - handled in ViewModel layer
-        throw UnsupportedOperationException("Use ViewModel-level sendOtp with Activity reference")
+    override suspend fun sendVerificationCode(phoneNumber: String): Result<String> {
+        // This method is handled via callback in FirebaseAuthDataSource
+        // For now, return a placeholder - actual implementation is in AuthViewModel
+        return Result.failure(Exception("Use AuthViewModel.sendVerificationCode instead"))
     }
 
     override suspend fun verifyOtp(verificationId: String, code: String): Result<User> {

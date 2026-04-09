@@ -1,6 +1,7 @@
 package com.silentsos.app.di
 
 import android.content.Context
+import android.util.Log
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import com.google.firebase.auth.FirebaseAuth
@@ -20,19 +21,47 @@ object FirebaseModule {
 
     @Provides
     @Singleton
-    fun provideFirebaseAuth(): FirebaseAuth = FirebaseAuth.getInstance()
+    fun provideFirebaseAuth(): FirebaseAuth? {
+        return try {
+            FirebaseAuth.getInstance()
+        } catch (e: Exception) {
+            Log.e("FirebaseModule", "FirebaseAuth init failed: ${e.message}")
+            null
+        }
+    }
 
     @Provides
     @Singleton
-    fun provideFirestore(): FirebaseFirestore = FirebaseFirestore.getInstance()
+    fun provideFirestore(): FirebaseFirestore? {
+        return try {
+            FirebaseFirestore.getInstance()
+        } catch (e: Exception) {
+            Log.e("FirebaseModule", "FirebaseFirestore init failed: ${e.message}")
+            null
+        }
+    }
 
     @Provides
     @Singleton
-    fun provideFirebaseStorage(): FirebaseStorage = FirebaseStorage.getInstance()
+    fun provideFirebaseStorage(): FirebaseStorage? {
+        return try {
+            FirebaseStorage.getInstance()
+        } catch (e: Exception) {
+            Log.e("FirebaseModule", "FirebaseStorage init failed: ${e.message}")
+            null
+        }
+    }
 
     @Provides
     @Singleton
-    fun provideFirebaseMessaging(): FirebaseMessaging = FirebaseMessaging.getInstance()
+    fun provideFirebaseMessaging(): FirebaseMessaging? {
+        return try {
+            FirebaseMessaging.getInstance()
+        } catch (e: Exception) {
+            Log.e("FirebaseModule", "FirebaseMessaging init failed: ${e.message}")
+            null
+        }
+    }
 
     @Provides
     @Singleton

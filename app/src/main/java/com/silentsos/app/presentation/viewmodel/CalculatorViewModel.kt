@@ -4,11 +4,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.silentsos.app.domain.model.TriggerType
 import com.silentsos.app.domain.repository.AuthRepository
+import com.silentsos.app.domain.repository.SettingsRepository
 import com.silentsos.app.domain.usecase.sos.TriggerSOSUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -22,15 +24,32 @@ data class CalculatorUiState(
 @HiltViewModel
 class CalculatorViewModel @Inject constructor(
     private val authRepository: AuthRepository,
-    private val triggerSOSUseCase: TriggerSOSUseCase
+    private val triggerSOSUseCase: TriggerSOSUseCase,
+    private val settingsRepository: SettingsRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CalculatorUiState())
     val uiState: StateFlow<CalculatorUiState> = _uiState.asStateFlow()
 
     private var currentInput = StringBuilder()
+
+    // PINs loaded from persisted settings — no more hardcoded defaults
     private var secretPin = "1234"
     private var duressPin = "0000"
+
+    init {
+        observePins()
+    }
+
+    /** Keeps PINs in sync with persisted settings from DataStore. */
+    private fun observePins() {
+        viewModelScope.launch {
+            settingsRepository.getTriggerConfig().collect { config ->
+                secretPin = config.secretPin
+                duressPin = config.duressPin
+            }
+        }
+    }
 
     fun onButtonClick(symbol: String) {
         when (symbol) {
@@ -154,11 +173,6 @@ class CalculatorViewModel @Inject constructor(
         } catch (_: Exception) {
             value
         }
-    }
-
-    fun updatePins(secret: String, duress: String) {
-        secretPin = secret
-        duressPin = duress
     }
 
     fun resetAuth() {

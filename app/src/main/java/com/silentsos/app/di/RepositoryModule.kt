@@ -4,10 +4,12 @@ import com.silentsos.app.data.repository.AuthRepositoryImpl
 import com.silentsos.app.data.repository.ContactRepositoryImpl
 import com.silentsos.app.data.repository.LocationRepositoryImpl
 import com.silentsos.app.data.repository.SOSRepositoryImpl
+import com.silentsos.app.data.repository.SettingsRepositoryImpl
 import com.silentsos.app.domain.repository.AuthRepository
 import com.silentsos.app.domain.repository.ContactRepository
 import com.silentsos.app.domain.repository.LocationRepository
 import com.silentsos.app.domain.repository.SOSRepository
+import com.silentsos.app.domain.repository.SettingsRepository
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -33,4 +35,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindLocationRepository(impl: LocationRepositoryImpl): LocationRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindSettingsRepository(impl: SettingsRepositoryImpl): SettingsRepository
 }

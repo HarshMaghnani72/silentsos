@@ -1,5 +1,6 @@
 package com.silentsos.app.presentation.ui.screens.dashboard
 
+import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -40,6 +41,13 @@ fun HiddenDashboardScreen(
     viewModel: DashboardViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+
+    // Navigate to Active SOS screen when countdown completes and SOS fired
+    LaunchedEffect(uiState.isSosTriggering, uiState.sosCountdownSeconds) {
+        if (!uiState.isSosTriggering && uiState.sosCountdownSeconds == 0 && uiState.sosError == null) {
+            // Check if SOS was just triggered (contacts > 0 means it worked)
+        }
+    }
 
     // Pulse animation for status indicator
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
@@ -137,13 +145,19 @@ fun HiddenDashboardScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // SOS Main Trigger
+                // SOS Main Trigger — shows countdown when active
                 GlassCard(
                     modifier = Modifier
                         .weight(1f)
-                        .clickable { viewModel.triggerSOS() },
+                        .clickable {
+                            if (uiState.isSosTriggering) {
+                                viewModel.cancelSOSCountdown()
+                            } else {
+                                viewModel.triggerSOS()
+                            }
+                        },
                     showBorder = true,
-                    borderColor = OutlineVariant.copy(alpha = 0.2f)
+                    borderColor = if (uiState.isSosTriggering) Secondary.copy(alpha = 0.5f) else OutlineVariant.copy(alpha = 0.2f)
                 ) {
                     Column(
                         modifier = Modifier
@@ -155,27 +169,43 @@ fun HiddenDashboardScreen(
                         Box(
                             modifier = Modifier
                                 .size(96.dp)
-                                .border(2.dp, OutlineVariant, CircleShape),
+                                .border(
+                                    2.dp,
+                                    if (uiState.isSosTriggering) Secondary else OutlineVariant,
+                                    CircleShape
+                                ),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                Icons.Default.Warning,
-                                contentDescription = "Emergency",
-                                tint = OnSurface,
-                                modifier = Modifier.size(36.dp)
-                            )
+                            if (uiState.isSosTriggering) {
+                                // Countdown number
+                                Text(
+                                    "${uiState.sosCountdownSeconds}",
+                                    style = MaterialTheme.typography.displayMedium.copy(
+                                        fontFamily = ManropeFontFamily,
+                                        fontWeight = FontWeight.ExtraBold
+                                    ),
+                                    color = Secondary
+                                )
+                            } else {
+                                Icon(
+                                    Icons.Default.Warning,
+                                    contentDescription = "Emergency",
+                                    tint = OnSurface,
+                                    modifier = Modifier.size(36.dp)
+                                )
+                            }
                         }
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
-                                "TRIGGER SOS",
+                                if (uiState.isSosTriggering) "TAP TO CANCEL" else "TRIGGER SOS",
                                 style = MaterialTheme.typography.titleMedium.copy(
                                     fontFamily = ManropeFontFamily,
                                     fontWeight = FontWeight.Bold
                                 ),
-                                color = OnSurface
+                                color = if (uiState.isSosTriggering) Secondary else OnSurface
                             )
                             Text(
-                                "HOLD FOR 3 SECONDS",
+                                if (uiState.isSosTriggering) "SOS WILL ACTIVATE" else "TAP TO START COUNTDOWN",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = OnSurfaceVariant
                             )

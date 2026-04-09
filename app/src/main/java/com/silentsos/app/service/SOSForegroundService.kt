@@ -55,19 +55,27 @@ class SOSForegroundService : Service() {
 
     private fun startLocationTracking() {
         serviceScope.launch {
-            locationRepository.getLocationUpdates(intervalMs = 10_000L).collect { location ->
-                val eId = eventId ?: return@collect
-                val update = LocationUpdate(
-                    sosEventId = eId,
-                    latitude = location.latitude,
-                    longitude = location.longitude,
-                    accuracy = location.accuracy,
-                    speed = location.speed,
-                    bearing = location.bearing,
-                    altitude = location.altitude,
-                    timestamp = System.currentTimeMillis()
-                )
-                sosRepository.addLocationUpdate(update)
+            try {
+                locationRepository.getLocationUpdates(intervalMs = 10_000L).collect { location ->
+                    val eId = eventId ?: return@collect
+                    val update = LocationUpdate(
+                        sosEventId = eId,
+                        latitude = location.latitude,
+                        longitude = location.longitude,
+                        accuracy = location.accuracy,
+                        speed = location.speed,
+                        bearing = location.bearing,
+                        altitude = location.altitude,
+                        timestamp = System.currentTimeMillis()
+                    )
+                    sosRepository.addLocationUpdate(update)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("SOSForeground", "Location tracking failed", e)
+                val eId = eventId
+                if (eId != null) {
+                    com.silentsos.app.worker.SOSRetryWorker.enqueue(this@SOSForegroundService, eId)
+                }
             }
         }
     }

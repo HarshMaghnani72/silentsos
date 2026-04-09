@@ -12,11 +12,11 @@ import javax.inject.Singleton
 
 @Singleton
 class FirebaseAuthDataSource @Inject constructor(
-    private val auth: FirebaseAuth,
+    private val auth: FirebaseAuth?,
     private val firestoreDataSource: FirestoreDataSource
 ) {
-    val currentUserId: String? get() = auth.currentUser?.uid
-    val isAuthenticated: Boolean get() = auth.currentUser != null
+    val currentUserId: String? get() = auth?.currentUser?.uid
+    val isAuthenticated: Boolean get() = auth?.currentUser != null
 
     fun sendVerificationCode(
         phoneNumber: String,
@@ -24,6 +24,11 @@ class FirebaseAuthDataSource @Inject constructor(
         onCodeSent: (String) -> Unit,
         onError: (Exception) -> Unit
     ) {
+        val firebaseAuth = auth
+        if (firebaseAuth == null) {
+            onError(Exception("Firebase not initialized! Missing google-services.json?"))
+            return
+        }
         val callbacks = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
             override fun onVerificationCompleted(credential: PhoneAuthCredential) {
                 // Auto-verification handled separately
@@ -41,7 +46,7 @@ class FirebaseAuthDataSource @Inject constructor(
             }
         }
 
-        val options = PhoneAuthOptions.newBuilder(auth)
+        val options = PhoneAuthOptions.newBuilder(firebaseAuth)
             .setPhoneNumber(phoneNumber)
             .setTimeout(60L, TimeUnit.SECONDS)
             .setActivity(activity)
@@ -53,8 +58,9 @@ class FirebaseAuthDataSource @Inject constructor(
 
     suspend fun verifyCode(verificationId: String, code: String): Result<User> {
         return try {
+            val firebaseAuth = auth ?: throw Exception("Firebase not initialized! Missing google-services.json?")
             val credential = PhoneAuthProvider.getCredential(verificationId, code)
-            val result = auth.signInWithCredential(credential).await()
+            val result = firebaseAuth.signInWithCredential(credential).await()
             val firebaseUser = result.user ?: throw Exception("User is null after sign in")
 
             val user = User(
@@ -72,6 +78,6 @@ class FirebaseAuthDataSource @Inject constructor(
     }
 
     fun signOut() {
-        auth.signOut()
+        auth?.signOut()
     }
 }

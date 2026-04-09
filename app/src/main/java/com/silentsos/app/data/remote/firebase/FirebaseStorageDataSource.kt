@@ -9,11 +9,12 @@ import javax.inject.Singleton
 
 @Singleton
 class FirebaseStorageDataSource @Inject constructor(
-    private val storage: FirebaseStorage
+    private val storage: FirebaseStorage?
 ) {
     suspend fun uploadAudioRecording(eventId: String, filePath: String): String {
+        val fbStorage = storage ?: throw Exception("Firebase not initialized")
         val file = File(filePath)
-        val ref = storage.reference
+        val ref = fbStorage.reference
             .child("recordings/$eventId/${file.name}")
         ref.putFile(Uri.fromFile(file)).await()
         return ref.downloadUrl.await().toString()
@@ -21,7 +22,7 @@ class FirebaseStorageDataSource @Inject constructor(
 
     suspend fun deleteRecording(url: String) {
         try {
-            storage.getReferenceFromUrl(url).delete().await()
+            storage?.getReferenceFromUrl(url)?.delete()?.await()
         } catch (_: Exception) { }
     }
 }

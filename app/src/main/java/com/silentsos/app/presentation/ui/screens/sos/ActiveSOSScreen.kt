@@ -159,6 +159,18 @@ fun ActiveSOSScreen(
                         color = OnSurface
                     )
                     Spacer(modifier = Modifier.height(4.dp))
+                    // Elapsed time
+                    val minutes = uiState.elapsedSeconds / 60
+                    val seconds = uiState.elapsedSeconds % 60
+                    Text(
+                        "Active for ${String.format("%02d:%02d", minutes, seconds)}",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = Secondary
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         "Your guardians have been alerted",
                         style = MaterialTheme.typography.bodySmall,
@@ -182,7 +194,7 @@ fun ActiveSOSScreen(
                 OperationRow(
                     icon = Icons.Default.LocationOn,
                     label = "GPS Transmitting",
-                    detail = "LAT: 41.8781 LON: -87.6298",
+                    detail = "LAT: ${String.format("%.4f", uiState.currentLatitude)} LON: ${String.format("%.4f", uiState.currentLongitude)}",
                     accentColor = Secondary,
                     isActive = uiState.isTransmittingLocation
                 )

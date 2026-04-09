@@ -74,7 +74,7 @@ class AudioRecordingService : Service() {
                 start()
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("AudioRecording", "Failed to start recording", e)
         }
     }
 
@@ -86,7 +86,7 @@ class AudioRecordingService : Service() {
             }
             mediaRecorder = null
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("AudioRecording", "Failed to stop recording", e)
         }
     }
 
@@ -95,7 +95,12 @@ class AudioRecordingService : Service() {
         val file = outputFile ?: return
 
         serviceScope.launch {
-            sosRepository.uploadAudioRecording(eId, file.absolutePath)
+            try {
+                sosRepository.uploadAudioRecording(eId, file.absolutePath)
+            } catch (e: Exception) {
+                android.util.Log.e("AudioRecording", "Failed to upload recording", e)
+                com.silentsos.app.worker.SOSRetryWorker.enqueue(this@AudioRecordingService, eId)
+            }
         }
     }
 

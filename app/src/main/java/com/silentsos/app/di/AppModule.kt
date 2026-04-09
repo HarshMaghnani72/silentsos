@@ -22,4 +22,12 @@ object AppModule {
     fun provideDataStore(
         @ApplicationContext context: Context
     ): DataStore<Preferences> = context.dataStore
+
+    @Provides
+    @Singleton
+    fun provideNetworkMonitor(
+        @ApplicationContext context: Context
+    ): com.silentsos.app.utils.NetworkMonitor {
+        return com.silentsos.app.utils.NetworkMonitor(context)
+    }
 }

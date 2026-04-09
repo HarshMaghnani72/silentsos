@@ -1,0 +1,63 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user owns the SOS event
+    function ownsSOSEvent(eventId) {
+      return isAuthenticated() 
+        && firestore.get(/databases/(default)/documents/sos_events/$(eventId)).data.userId == request.auth.uid;
+    }
+    
+    // ═══════════════════════════════════════════════════════════
+    // AUDIO RECORDINGS
+    // ═══════════════════════════════════════════════════════════
+    // Path: /recordings/{eventId}/{fileName}
+    match /recordings/{eventId}/{fileName} {
+      // Users can upload audio recordings for their own SOS events
+      allow create: if isAuthenticated()
+        && ownsSOSEvent(eventId)
+        && request.resource.size < 50 * 1024 * 1024 // Max 50MB
+        && request.resource.contentType.matches('audio/.*'); // Only audio files
+      
+      // Users can read their own recordings
+      allow read: if isAuthenticated()
+        && ownsSOSEvent(eventId);
+      
+      // Users can delete their own recordings (for privacy/cleanup)
+      allow delete: if isAuthenticated()
+        && ownsSOSEvent(eventId);
+      
+      // Updates not allowed
+      allow update: if false;
+    }
+    
+    // ═══════════════════════════════════════════════════════════
+    // PROFILE PICTURES (Future Enhancement)
+    // ═══════════════════════════════════════════════════════════
+    // Path: /profile_pictures/{userId}/{fileName}
+    match /profile_pictures/{userId}/{fileName} {
+      allow read: if isAuthenticated();
+      
+      allow create, update: if isAuthenticated()
+        && request.auth.uid == userId
+        && request.resource.size < 5 * 1024 * 1024 // Max 5MB
+        && request.resource.contentType.matches('image/.*'); // Only images
+      
+      allow delete: if isAuthenticated()
+        && request.auth.uid == userId;
+    }
+    
+    // ═══════════════════════════════════════════════════════════
+    // DEFAULT DENY ALL
+    // ═══════════════════════════════════════════════════════════
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,9 +1,12 @@
 package com.silentsos.app.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import com.silentsos.app.presentation.ui.screens.auth.PhoneAuthScreen
 import com.silentsos.app.presentation.ui.screens.contacts.AddContactScreen
 import com.silentsos.app.presentation.ui.screens.contacts.SafetyNetworkScreen
 import com.silentsos.app.presentation.ui.screens.dashboard.HiddenDashboardScreen
@@ -14,13 +17,30 @@ import com.silentsos.app.presentation.ui.screens.history.IncidentHistoryScreen
 import com.silentsos.app.presentation.ui.screens.settings.SettingsScreen
 import com.silentsos.app.presentation.ui.screens.settings.TriggerConfigScreen
 import com.silentsos.app.presentation.ui.screens.sos.ActiveSOSScreen
+import com.silentsos.app.presentation.viewmodel.AuthViewModel
 
 @Composable
-fun AppNavigation(navController: NavHostController) {
+fun AppNavigation(
+    navController: NavHostController,
+    isAuthenticated: Boolean
+) {
+    val startDestination = if (isAuthenticated) Screen.Calculator.route else Screen.PhoneAuth.route
+
     NavHost(
         navController = navController,
-        startDestination = Screen.Calculator.route
+        startDestination = startDestination
     ) {
+        // ── Authentication ──
+        composable(Screen.PhoneAuth.route) {
+            PhoneAuthScreen(
+                onAuthSuccess = {
+                    navController.navigate(Screen.Calculator.route) {
+                        popUpTo(Screen.PhoneAuth.route) { inclusive = true }
+                    }
+                }
+            )
+        }
+
         // ── Entry Point: Calculator Disguise ──
         composable(Screen.Calculator.route) {
             CalculatorScreen(

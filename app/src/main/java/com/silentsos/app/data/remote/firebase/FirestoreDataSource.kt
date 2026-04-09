@@ -6,13 +6,14 @@ import com.silentsos.app.domain.model.*
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class FirestoreDataSource @Inject constructor(
-    private val firestore: FirebaseFirestore
+    private val firestore: FirebaseFirestore?   // Keep nullable if you want lazy init or optional Firebase
 ) {
     companion object {
         const val USERS = "users"
@@ -23,129 +24,145 @@ class FirestoreDataSource @Inject constructor(
 
     // ── Users ─────────────────────────────────────────────
     suspend fun setUser(user: User) {
-        firestore.collection(USERS).document(user.uid).set(user).await()
+        firestore?.collection(USERS)?.document(user.uid)?.set(user)?.await()
     }
 
     suspend fun getUser(uid: String): User? {
-        return firestore.collection(USERS).document(uid).get().await()
+        val db = firestore ?: return null
+        return db.collection(USERS).document(uid).get().await()
             .toObject(User::class.java)
     }
 
     suspend fun updateUser(user: User) {
-        firestore.collection(USERS).document(user.uid).set(user).await()
+        firestore?.collection(USERS)?.document(user.uid)?.set(user)?.await()
     }
 
     // ── Emergency Contacts ────────────────────────────────
-    fun getContacts(userId: String): Flow<List<EmergencyContact>> = callbackFlow {
-        val listener = firestore.collection(EMERGENCY_CONTACTS)
-            .whereEqualTo("userId", userId)
-            .orderBy("priority")
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    close(error)
-                    return@addSnapshotListener
+    fun getContacts(userId: String): Flow<List<EmergencyContact>> {
+        val db = firestore ?: return emptyFlow()
+        return callbackFlow {
+            val listener = db.collection(EMERGENCY_CONTACTS)
+                .whereEqualTo("userId", userId)
+                .orderBy("priority")
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        close(error)
+                        return@addSnapshotListener
+                    }
+                    val contacts = snapshot?.documents?.mapNotNull {
+                        it.toObject(EmergencyContact::class.java)?.copy(id = it.id)
+                    } ?: emptyList()
+                    trySend(contacts)
                 }
-                val contacts = snapshot?.documents?.mapNotNull {
-                    it.toObject(EmergencyContact::class.java)?.copy(id = it.id)
-                } ?: emptyList()
-                trySend(contacts)
-            }
-        awaitClose { listener.remove() }
+            awaitClose { listener.remove() }
+        }
     }
 
     suspend fun addContact(contact: EmergencyContact): String {
-        val doc = firestore.collection(EMERGENCY_CONTACTS).add(contact).await()
+        val db = firestore ?: throw Exception("Firebase Firestore not initialized")
+        val doc = db.collection(EMERGENCY_CONTACTS).add(contact).await()
         return doc.id
     }
 
     suspend fun updateContact(contact: EmergencyContact) {
-        firestore.collection(EMERGENCY_CONTACTS).document(contact.id).set(contact).await()
+        firestore?.collection(EMERGENCY_CONTACTS)?.document(contact.id)?.set(contact)?.await()
     }
 
     suspend fun deleteContact(contactId: String) {
-        firestore.collection(EMERGENCY_CONTACTS).document(contactId).delete().await()
+        firestore?.collection(EMERGENCY_CONTACTS)?.document(contactId)?.delete()?.await()
     }
 
     suspend fun getContactCount(userId: String): Int {
-        return firestore.collection(EMERGENCY_CONTACTS)
+        val db = firestore ?: return 0
+        return db.collection(EMERGENCY_CONTACTS)
             .whereEqualTo("userId", userId)
             .get().await().size()
     }
 
     // ── SOS Events ────────────────────────────────────────
     suspend fun createSOSEvent(event: SOSEvent): String {
-        val doc = firestore.collection(SOS_EVENTS).add(event).await()
+        val db = firestore ?: throw Exception("Firebase Firestore not initialized")
+        val doc = db.collection(SOS_EVENTS).add(event).await()
         return doc.id
     }
 
     suspend fun updateSOSEvent(event: SOSEvent) {
-        firestore.collection(SOS_EVENTS).document(event.id).set(event).await()
+        firestore?.collection(SOS_EVENTS)?.document(event.id)?.set(event)?.await()
     }
 
     suspend fun cancelSOSEvent(eventId: String) {
-        firestore.collection(SOS_EVENTS).document(eventId)
-            .update(
+        firestore?.collection(SOS_EVENTS)?.document(eventId)
+            ?.update(
                 mapOf(
                     "status" to SOSStatus.CANCELLED.name,
                     "endedAt" to System.currentTimeMillis()
                 )
-            ).await()
+            )?.await()
     }
 
-    fun getActiveSOSEvent(userId: String): Flow<SOSEvent?> = callbackFlow {
-        val listener = firestore.collection(SOS_EVENTS)
-            .whereEqualTo("userId", userId)
-            .whereEqualTo("status", SOSStatus.ACTIVE.name)
-            .limit(1)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    close(error)
-                    return@addSnapshotListener
+    fun getActiveSOSEvent(userId: String): Flow<SOSEvent?> {
+        val db = firestore ?: return emptyFlow()
+        return callbackFlow {
+            val listener = db.collection(SOS_EVENTS)
+                .whereEqualTo("userId", userId)
+                .whereEqualTo("status", SOSStatus.ACTIVE.name)
+                .limit(1)
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        close(error)
+                        return@addSnapshotListener
+                    }
+                    val event = snapshot?.documents?.firstOrNull()?.let {
+                        it.toObject(SOSEvent::class.java)?.copy(id = it.id)
+                    }
+                    trySend(event)
                 }
-                val event = snapshot?.documents?.firstOrNull()?.let {
-                    it.toObject(SOSEvent::class.java)?.copy(id = it.id)
-                }
-                trySend(event)
-            }
-        awaitClose { listener.remove() }
+            awaitClose { listener.remove() }
+        }
     }
 
-    fun getSOSHistory(userId: String): Flow<List<SOSEvent>> = callbackFlow {
-        val listener = firestore.collection(SOS_EVENTS)
-            .whereEqualTo("userId", userId)
-            .orderBy("startedAt", Query.Direction.DESCENDING)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    close(error)
-                    return@addSnapshotListener
+    fun getSOSHistory(userId: String): Flow<List<SOSEvent>> {
+        val db = firestore ?: return emptyFlow()
+        return callbackFlow {
+            val listener = db.collection(SOS_EVENTS)
+                .whereEqualTo("userId", userId)
+                .orderBy("startedAt", Query.Direction.DESCENDING)
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        close(error)
+                        return@addSnapshotListener
+                    }
+                    val events = snapshot?.documents?.mapNotNull {
+                        it.toObject(SOSEvent::class.java)?.copy(id = it.id)
+                    } ?: emptyList()
+                    trySend(events)
                 }
-                val events = snapshot?.documents?.mapNotNull {
-                    it.toObject(SOSEvent::class.java)?.copy(id = it.id)
-                } ?: emptyList()
-                trySend(events)
-            }
-        awaitClose { listener.remove() }
+            awaitClose { listener.remove() }
+        }
     }
 
     // ── Location Updates ──────────────────────────────────
     suspend fun addLocationUpdate(update: LocationUpdate) {
-        firestore.collection(LOCATION_UPDATES).add(update).await()
+        firestore?.collection(LOCATION_UPDATES)?.add(update)?.await()
     }
 
-    fun getLocationUpdates(eventId: String): Flow<List<LocationUpdate>> = callbackFlow {
-        val listener = firestore.collection(LOCATION_UPDATES)
-            .whereEqualTo("sosEventId", eventId)
-            .orderBy("timestamp", Query.Direction.ASCENDING)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    close(error)
-                    return@addSnapshotListener
+    fun getLocationUpdates(eventId: String): Flow<List<LocationUpdate>> {
+        val db = firestore ?: return emptyFlow()
+        return callbackFlow {
+            val listener = db.collection(LOCATION_UPDATES)
+                .whereEqualTo("sosEventId", eventId)
+                .orderBy("timestamp", Query.Direction.ASCENDING)
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        close(error)
+                        return@addSnapshotListener
+                    }
+                    val updates = snapshot?.documents?.mapNotNull {
+                        it.toObject(LocationUpdate::class.java)?.copy(id = it.id)
+                    } ?: emptyList()
+                    trySend(updates)
                 }
-                val updates = snapshot?.documents?.mapNotNull {
-                    it.toObject(LocationUpdate::class.java)?.copy(id = it.id)
-                } ?: emptyList()
-                trySend(updates)
-            }
-        awaitClose { listener.remove() }
+            awaitClose { listener.remove() }
+        }
     }
 }

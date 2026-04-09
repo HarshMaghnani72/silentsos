@@ -1,7 +1,6 @@
 package com.silentsos.app.ui.theme
 
 import android.app.Activity
-//import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
@@ -38,14 +37,7 @@ private val SilentSOSColorScheme = darkColorScheme(
     outlineVariant = OutlineVariant,
     inverseSurface = InverseSurface,
     inverseOnSurface = InverseOnSurface,
-    surfaceTint = SurfaceTint,
-    surfaceBright = SurfaceBright,
-    surfaceDim = SurfaceDim,
-    surfaceContainer = SurfaceContainer,
-    surfaceContainerHigh = SurfaceContainerHigh,
-    surfaceContainerHighest = SurfaceContainerHighest,
-    surfaceContainerLow = SurfaceContainerLow,
-    surfaceContainerLowest = SurfaceContainerLowest,
+    surfaceTint = SurfaceTint
 )
 
 @Composable
