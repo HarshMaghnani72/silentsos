@@ -58,7 +58,7 @@ Thumbs.db
 obj/
 
 # Google Services
-google-services.json
+# google-services.json
 
 # Sensitive files
 *.keystore
