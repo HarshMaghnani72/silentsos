@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -35,6 +36,15 @@ fun ActiveSOSScreen(
     viewModel: SOSViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var showStopDialog by remember { mutableStateOf(false) }
+    var securePin by remember { mutableStateOf("") }
+
+    LaunchedEffect(uiState.resolutionCompleted) {
+        if (uiState.resolutionCompleted) {
+            viewModel.consumeResolution()
+            onEndProtocol()
+        }
+    }
 
     // Pulse animation for SOS indicator
     val infiniteTransition = rememberInfiniteTransition(label = "sosPulse")
@@ -52,6 +62,12 @@ fun ActiveSOSScreen(
             repeatMode = RepeatMode.Reverse
         ), label = "bar"
     )
+    val statusLabel = uiState.activeEvent?.status?.name ?: "ACTIVE"
+    val notifiedContactsLabel = if (uiState.notifiedContacts.isEmpty()) {
+        "Notifications are still being delivered"
+    } else {
+        "Notified: ${uiState.notifiedContacts.joinToString()}"
+    }
 
     Scaffold(
         containerColor = Background
@@ -103,7 +119,7 @@ fun ActiveSOSScreen(
                             .background(Secondary)
                     )
                     Text(
-                        "TRANSMITTING",
+                        statusLabel,
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 1.sp,
@@ -172,7 +188,7 @@ fun ActiveSOSScreen(
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        "Your guardians have been alerted",
+                        notifiedContactsLabel,
                         style = MaterialTheme.typography.bodySmall,
                         color = OnSurfaceVariant
                     )
@@ -212,6 +228,46 @@ fun ActiveSOSScreen(
                     accentColor = Secondary,
                     isActive = uiState.isCapturingEvidence
                 )
+            }
+
+            if (uiState.notifiedContacts.isNotEmpty()) {
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            "CONTACTS NOTIFIED",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 2.sp
+                            ),
+                            color = OnSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                        Text(
+                            uiState.notifiedContacts.joinToString(),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = OnSurface
+                        )
+                    }
+                }
+            }
+
+            uiState.cancelError?.let { error ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(TertiaryContainer.copy(alpha = 0.18f))
+                        .border(1.dp, TertiaryContainer.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                        .padding(20.dp)
+                ) {
+                    Text(
+                        text = error,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = OnTertiaryContainer
+                    )
+                }
             }
 
             // ── Network Signal Bars ──
@@ -267,7 +323,7 @@ fun ActiveSOSScreen(
 
             // ── End Protocol Button ──
             Button(
-                onClick = onEndProtocol,
+                onClick = { showStopDialog = true },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
@@ -289,6 +345,51 @@ fun ActiveSOSScreen(
                 )
             }
         }
+    }
+
+    if (showStopDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showStopDialog = false
+                securePin = ""
+                viewModel.clearCancelError()
+            },
+            title = { Text("Resolve Active SOS") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Enter your secure PIN to stop location sharing, stop recording, and mark this SOS as resolved.")
+                    OutlinedTextField(
+                        value = securePin,
+                        onValueChange = { securePin = it.filter(Char::isDigit).take(12) },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        label = { Text("Secure PIN") }
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.cancelSOS(securePin)
+                        securePin = ""
+                    },
+                    enabled = !uiState.isCancelling
+                ) {
+                    Text(if (uiState.isCancelling) "Stopping..." else "Resolve SOS")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showStopDialog = false
+                        securePin = ""
+                        viewModel.clearCancelError()
+                    }
+                ) {
+                    Text("Keep Active")
+                }
+            }
+        )
     }
 }
 

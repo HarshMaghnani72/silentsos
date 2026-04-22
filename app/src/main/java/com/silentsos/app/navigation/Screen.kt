@@ -1,8 +1,12 @@
 package com.silentsos.app.navigation
 
 sealed class Screen(val route: String) {
+    // Initialization
+    data object Splash : Screen("splash")
+
     // Authentication
     data object PhoneAuth : Screen("phone_auth")
+    data object Permissions : Screen("permissions")
     
     // Disguise (Entry Point)
     data object Calculator : Screen("calculator")
@@ -15,7 +19,6 @@ sealed class Screen(val route: String) {
 
     // Contacts / Safety Network
     data object SafetyNetwork : Screen("safety_network")
-    data object SafetyNetworkSetup : Screen("safety_network_setup")
     data object AddContact : Screen("add_contact")
 
     // Settings

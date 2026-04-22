@@ -7,21 +7,16 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.silentsos.app.R
-import com.silentsos.app.domain.repository.SOSRepository
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.*
 import java.io.File
-import javax.inject.Inject
 
 @AndroidEntryPoint
 class AudioRecordingService : Service() {
 
-    @Inject lateinit var sosRepository: SOSRepository
-
     private var mediaRecorder: MediaRecorder? = null
     private var outputFile: File? = null
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var eventId: String? = null
+    private var uploadEnqueued = false
 
     companion object {
         const val CHANNEL_ID = "audio_channel"
@@ -40,12 +35,20 @@ class AudioRecordingService : Service() {
         when (intent?.action) {
             ACTION_START -> {
                 eventId = intent.getStringExtra(EXTRA_EVENT_ID)
-                startForeground(NOTIFICATION_ID, buildNotification())
+                if (eventId.isNullOrBlank()) {
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    startForeground(NOTIFICATION_ID, buildNotification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+                } else {
+                    startForeground(NOTIFICATION_ID, buildNotification())
+                }
                 startRecording()
             }
             ACTION_STOP -> {
                 stopRecording()
-                uploadRecording()
+                enqueueRecordingUpload()
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
@@ -55,8 +58,11 @@ class AudioRecordingService : Service() {
 
     @Suppress("DEPRECATION")
     private fun startRecording() {
+        if (mediaRecorder != null) return
+        uploadEnqueued = false
+
         try {
-            val dir = File(cacheDir, "recordings").apply { mkdirs() }
+            val dir = File(filesDir, "recordings").apply { mkdirs() }
             outputFile = File(dir, "sos_${System.currentTimeMillis()}.m4a")
 
             mediaRecorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -79,39 +85,59 @@ class AudioRecordingService : Service() {
     }
 
     private fun stopRecording() {
+        val recorder = mediaRecorder ?: return
         try {
-            mediaRecorder?.apply {
-                stop()
-                release()
-            }
-            mediaRecorder = null
+            recorder.stop()
         } catch (e: Exception) {
             android.util.Log.e("AudioRecording", "Failed to stop recording", e)
+        } finally {
+            try {
+                recorder.release()
+            } catch (e: Exception) {
+                android.util.Log.w("AudioRecording", "Failed to release recorder", e)
+            }
+            mediaRecorder = null
         }
     }
 
-    private fun uploadRecording() {
+    private fun enqueueRecordingUpload() {
         val eId = eventId ?: return
         val file = outputFile ?: return
 
-        serviceScope.launch {
-            try {
-                sosRepository.uploadAudioRecording(eId, file.absolutePath)
-            } catch (e: Exception) {
-                android.util.Log.e("AudioRecording", "Failed to upload recording", e)
-                com.silentsos.app.worker.SOSRetryWorker.enqueue(this@AudioRecordingService, eId)
-            }
+        if (uploadEnqueued) return
+        if (!file.exists() || file.length() <= 0L) {
+            android.util.Log.w("AudioRecording", "Skipping empty recording for event $eId")
+            file.delete()
+            return
         }
+
+        uploadEnqueued = true
+        com.silentsos.app.worker.SOSRetryWorker.enqueue(
+            context = this@AudioRecordingService,
+            eventId = eId,
+            retryType = com.silentsos.app.worker.SOSRetryWorker.RetryType.AUDIO_UPLOAD,
+            filePath = file.absolutePath
+        )
+        android.util.Log.i("AudioRecording", "Queued recording upload for event $eId")
     }
 
     private fun buildNotification(): Notification {
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0,
+            Intent(this, com.silentsos.app.MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("System Service")
             .setContentText("Processing audio data")
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_stat_sos)
             .setOngoing(true)
             .setSilent(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setContentIntent(pendingIntent)
+            .setStyle(NotificationCompat.BigTextStyle().bigText("Processing audio data"))
             .build()
     }
 
@@ -133,8 +159,10 @@ class AudioRecordingService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        if (mediaRecorder != null) {
+            stopRecording()
+            enqueueRecordingUpload()
+        }
         super.onDestroy()
-        mediaRecorder?.release()
-        serviceScope.cancel()
     }
 }

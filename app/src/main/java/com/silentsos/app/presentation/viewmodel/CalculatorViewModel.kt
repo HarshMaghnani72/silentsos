@@ -2,15 +2,20 @@ package com.silentsos.app.presentation.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.content.Context
+import android.content.Intent
 import com.silentsos.app.domain.model.TriggerType
 import com.silentsos.app.domain.repository.AuthRepository
 import com.silentsos.app.domain.repository.SettingsRepository
 import com.silentsos.app.domain.usecase.sos.TriggerSOSUseCase
+import com.silentsos.app.service.AudioRecordingService
+import com.silentsos.app.service.SOSForegroundService
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -25,7 +30,8 @@ data class CalculatorUiState(
 class CalculatorViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val triggerSOSUseCase: TriggerSOSUseCase,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    @ApplicationContext private val appContext: Context
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CalculatorUiState())
@@ -112,6 +118,7 @@ class CalculatorViewModel @Inject constructor(
                 viewModelScope.launch {
                     authRepository.currentUserId?.let { userId ->
                         triggerSOSUseCase(userId, TriggerType.DURESS_PIN, isDuress = true)
+                            .onSuccess { startSOSServices(it) }
                     }
                 }
                 _uiState.value = _uiState.value.copy(isDuressTriggered = true)
@@ -177,5 +184,19 @@ class CalculatorViewModel @Inject constructor(
 
     fun resetAuth() {
         _uiState.value = _uiState.value.copy(isAuthenticated = false, isDuressTriggered = false)
+    }
+
+    private fun startSOSServices(eventId: String) {
+        val sosIntent = Intent(appContext, SOSForegroundService::class.java).apply {
+            action = SOSForegroundService.ACTION_START
+            putExtra(SOSForegroundService.EXTRA_EVENT_ID, eventId)
+        }
+        appContext.startForegroundService(sosIntent)
+
+        val audioIntent = Intent(appContext, AudioRecordingService::class.java).apply {
+            action = AudioRecordingService.ACTION_START
+            putExtra(AudioRecordingService.EXTRA_EVENT_ID, eventId)
+        }
+        appContext.startForegroundService(audioIntent)
     }
 }

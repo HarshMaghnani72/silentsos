@@ -26,10 +26,13 @@ class TriggerSOSUseCase @Inject constructor(
         isDuress: Boolean = false
     ): Result<String> {
         return try {
-            // Get current location
+            if (contactRepository.getContactCount(userId) == 0) {
+                return Result.failure(
+                    IllegalStateException("Add at least one emergency contact before activating SOS")
+                )
+            }
+
             val location = locationRepository.getCurrentLocation().getOrNull()
-            
-            // Create SOS event
             val event = SOSEvent(
                 userId = userId,
                 triggerType = triggerType,
@@ -39,24 +42,25 @@ class TriggerSOSUseCase @Inject constructor(
                 startedAt = System.currentTimeMillis(),
                 isDuress = isDuress
             )
-            
-            // Save event to Firestore
             val result = sosRepository.createSOSEvent(event)
-            
+
             result.fold(
                 onSuccess = { eventId ->
-                    // Notify emergency contacts
                     val eventWithId = event.copy(id = eventId)
                     notificationService.notifyContacts(eventWithId).fold(
                         onSuccess = { notifiedContacts ->
                             Log.i(TAG, "Successfully notified ${notifiedContacts.size} contacts")
-                            // Update event with notified contacts
                             val updatedEvent = eventWithId.copy(contactsNotified = notifiedContacts)
                             sosRepository.updateSOSEvent(updatedEvent)
                         },
                         onFailure = { error ->
                             Log.e(TAG, "Failed to notify contacts", error)
-                            // Continue even if notification fails - event is still created
+                            sosRepository.updateSOSEvent(
+                                eventWithId.copy(
+                                    status = SOSStatus.ESCALATED,
+                                    resolutionMessage = "Notification delivery degraded: ${error.message.orEmpty()}"
+                                )
+                            )
                         }
                     )
                     Result.success(eventId)

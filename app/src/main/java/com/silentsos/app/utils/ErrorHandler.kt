@@ -40,6 +40,7 @@ class ErrorHandler @Inject constructor(
                     "ERROR_SESSION_EXPIRED" -> "Verification session expired. Please request a new code."
                     "ERROR_TOO_MANY_REQUESTS" -> "Too many attempts. Please try again later."
                     "ERROR_QUOTA_EXCEEDED" -> "SMS quota exceeded. Please try again later."
+                    "ERROR_APP_NOT_AUTHORIZED" -> "Firebase phone auth is not authorized for this build. Add the app's SHA-1 and SHA-256 fingerprints in Firebase Console and download the updated google-services.json."
                     else -> "Authentication failed: ${exception.message}"
                 }
             }
@@ -58,7 +59,12 @@ class ErrorHandler @Inject constructor(
                 "Permission denied. Please grant required permissions in settings."
             }
             else -> {
-                exception.message ?: "An unexpected error occurred. Please try again."
+                when {
+                    exception.message?.contains("DEVELOPER_ERROR", ignoreCase = true) == true ||
+                        exception.message?.contains("Unknown calling package name", ignoreCase = true) == true ->
+                        "Phone auth failed because this build is not registered correctly in Firebase. Add the SHA-1 and SHA-256 fingerprints for com.silentsos.app, then refresh google-services.json."
+                    else -> exception.message ?: "An unexpected error occurred. Please try again."
+                }
             }
         }
     }

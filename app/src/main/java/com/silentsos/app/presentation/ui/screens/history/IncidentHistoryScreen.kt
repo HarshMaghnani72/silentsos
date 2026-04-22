@@ -173,6 +173,7 @@ fun IncidentHistoryScreen(
                             SOSStatus.CANCELLED -> PillType.NEUTRAL
                             SOSStatus.RESOLVED -> PillType.SUCCESS
                             SOSStatus.PENDING -> PillType.SYSTEM
+                            SOSStatus.ESCALATED -> PillType.CRITICAL
                         }
                         val subtitle = buildString {
                             append(dateFormat.format(Date(event.startedAt)))

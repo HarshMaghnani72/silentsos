@@ -13,6 +13,7 @@ import com.silentsos.app.utils.ErrorHandler
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.flow.firstOrNull
+import java.io.File
 import java.util.concurrent.TimeUnit
 
 /**
@@ -33,13 +34,24 @@ class SOSRetryWorker @AssistedInject constructor(
         const val WORK_NAME = "sos_retry_worker"
         const val KEY_EVENT_ID = "event_id"
         const val KEY_RETRY_TYPE = "retry_type"
+        const val KEY_FILE_PATH = "file_path"
         const val MAX_RETRY_ATTEMPTS = 5
         private const val TAG = "SOSRetryWorker"
 
-        fun enqueue(context: Context, eventId: String, retryType: RetryType = RetryType.LOCATION_UPDATE) {
+        fun enqueue(
+            context: Context,
+            eventId: String,
+            retryType: RetryType = RetryType.LOCATION_UPDATE,
+            filePath: String? = null
+        ) {
             val inputData = Data.Builder()
                 .putString(KEY_EVENT_ID, eventId)
                 .putString(KEY_RETRY_TYPE, retryType.name)
+                .apply {
+                    if (!filePath.isNullOrBlank()) {
+                        putString(KEY_FILE_PATH, filePath)
+                    }
+                }
                 .build()
 
             val constraints = Constraints.Builder()
@@ -68,41 +80,30 @@ class SOSRetryWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         val eventId = inputData.getString(KEY_EVENT_ID) ?: return Result.failure()
         val retryTypeStr = inputData.getString(KEY_RETRY_TYPE) ?: RetryType.LOCATION_UPDATE.name
+        val filePath = inputData.getString(KEY_FILE_PATH)
         val retryType = try {
             RetryType.valueOf(retryTypeStr)
         } catch (e: Exception) {
             RetryType.LOCATION_UPDATE
         }
 
-        val userId = authRepository.currentUserId ?: return Result.failure()
-
-        // Check internet connectivity
         if (!errorHandler.hasInternetConnection()) {
             Log.w(TAG, "No internet connection, will retry later")
             return if (runAttemptCount < MAX_RETRY_ATTEMPTS) Result.retry() else Result.failure()
         }
 
         return try {
-            // Verify the event is still active
-            val activeEvent = sosRepository.getActiveSOSEvent(userId).firstOrNull()
-            
-            if (activeEvent == null || activeEvent.id != eventId) {
-                Log.i(TAG, "Event $eventId is no longer active, stopping retry")
-                return Result.success()
-            }
-
             when (retryType) {
                 RetryType.LOCATION_UPDATE -> retryLocationUpdate(eventId)
-                RetryType.EVENT_SYNC -> retryEventSync(activeEvent.id)
-                RetryType.AUDIO_UPLOAD -> retryAudioUpload(eventId)
+                RetryType.EVENT_SYNC -> retryEventSync(eventId)
+                RetryType.AUDIO_UPLOAD -> retryAudioUpload(eventId, filePath)
             }
 
             Log.i(TAG, "Successfully retried $retryType for event $eventId")
             Result.success()
-            
         } catch (e: Exception) {
             Log.e(TAG, "Failed to retry $retryType for event $eventId", e)
-            
+
             if (errorHandler.isRetryable(e) && runAttemptCount < MAX_RETRY_ATTEMPTS) {
                 Log.i(TAG, "Retryable error, attempt ${runAttemptCount + 1}/$MAX_RETRY_ATTEMPTS")
                 Result.retry()
@@ -114,6 +115,13 @@ class SOSRetryWorker @AssistedInject constructor(
     }
 
     private suspend fun retryLocationUpdate(eventId: String) {
+        val userId = authRepository.currentUserId ?: throw Exception("Not authenticated")
+        val activeEvent = sosRepository.getActiveSOSEvent(userId).firstOrNull()
+            ?: throw Exception("No active event to update")
+        if (activeEvent.id != eventId || activeEvent.status !in setOf(SOSStatus.ACTIVE, SOSStatus.ESCALATED)) {
+            throw Exception("Event is no longer active")
+        }
+
         val location = locationRepository.getCurrentLocation().getOrThrow()
         val update = LocationUpdate(
             sosEventId = eventId,
@@ -126,24 +134,31 @@ class SOSRetryWorker @AssistedInject constructor(
             timestamp = System.currentTimeMillis()
         )
         sosRepository.addLocationUpdate(update).getOrThrow()
+        sosRepository.updateSOSEventLocation(eventId, location.latitude, location.longitude).getOrThrow()
     }
 
     private suspend fun retryEventSync(eventId: String) {
-        // Firestore handles offline persistence automatically,
-        // but we can force a sync by reading the event
-        val userId = authRepository.currentUserId ?: throw Exception("Not authenticated")
-        val events = sosRepository.getSOSHistory(userId).firstOrNull() ?: emptyList()
-        val event = events.find { it.id == eventId }
+        val event = sosRepository.getSOSEvent(eventId).getOrThrow()
             ?: throw Exception("Event not found")
-        
-        // Update the event to trigger sync
         sosRepository.updateSOSEvent(event).getOrThrow()
     }
 
-    private suspend fun retryAudioUpload(eventId: String) {
-        // Audio upload retry would be handled by the AudioRecordingService
-        // This is a placeholder for future implementation
-        Log.i(TAG, "Audio upload retry not yet implemented")
+    private suspend fun retryAudioUpload(eventId: String, filePath: String?) {
+        val localFilePath = filePath ?: throw Exception("Missing recording file path")
+        val recording = File(localFilePath)
+        if (!recording.exists()) {
+            Log.w(TAG, "Recording file no longer exists for event $eventId: $localFilePath")
+            return
+        }
+        if (recording.length() <= 0L) {
+            recording.delete()
+            Log.w(TAG, "Recording file was empty for event $eventId: $localFilePath")
+            return
+        }
+
+        val audioUrl = sosRepository.uploadAudioRecording(eventId, localFilePath).getOrThrow()
+        sosRepository.attachAudioRecording(eventId, audioUrl).getOrThrow()
+        recording.delete()
     }
 
     enum class RetryType {

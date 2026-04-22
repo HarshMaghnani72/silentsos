@@ -1,5 +1,6 @@
 package com.silentsos.app.data.repository
 
+import android.app.Activity
 import com.silentsos.app.data.remote.firebase.FirebaseAuthDataSource
 import com.silentsos.app.data.remote.firebase.FirestoreDataSource
 import com.silentsos.app.domain.model.User
@@ -16,10 +17,26 @@ class AuthRepositoryImpl @Inject constructor(
     override val currentUserId: String? get() = authDataSource.currentUserId
     override val isAuthenticated: Boolean get() = authDataSource.isAuthenticated
 
-    override suspend fun sendVerificationCode(phoneNumber: String): Result<String> {
-        // This method is handled via callback in FirebaseAuthDataSource
-        // For now, return a placeholder - actual implementation is in AuthViewModel
-        return Result.failure(Exception("Use AuthViewModel.sendVerificationCode instead"))
+    override fun sendVerificationCode(
+        phoneNumber: String,
+        activity: Activity,
+        onCodeSent: (String) -> Unit,
+        onVerificationCompleted: (User) -> Unit,
+        onCodeAutoRetrievalTimeout: () -> Unit,
+        onError: (Exception) -> Unit
+    ) {
+        authDataSource.sendVerificationCode(
+            phoneNumber = phoneNumber,
+            activity = activity,
+            onCodeSent = onCodeSent,
+            onVerificationCompleted = onVerificationCompleted,
+            onCodeAutoRetrievalTimeout = onCodeAutoRetrievalTimeout,
+            onError = onError
+        )
+    }
+
+    override suspend fun syncCurrentUser(): Result<User> {
+        return authDataSource.syncCurrentUser()
     }
 
     override suspend fun verifyOtp(verificationId: String, code: String): Result<User> {

@@ -11,6 +11,16 @@ android {
     namespace = "com.silentsos.app"
     compileSdk = 35
 
+    val cloudinaryCloudName = providers.gradleProperty("CLOUDINARY_CLOUD_NAME")
+        .orElse("dmkdk8egt")
+        .get()
+    val cloudinarySignatureEndpoint = providers.gradleProperty("CLOUDINARY_SIGNATURE_ENDPOINT")
+        .orElse("https://us-central1-silentsos-555ac.cloudfunctions.net/cloudinaryUploadSignature")
+        .get()
+    val cloudinaryUnsignedUploadPreset = providers.gradleProperty("CLOUDINARY_UNSIGNED_UPLOAD_PRESET")
+        .orElse("")
+        .get()
+
     defaultConfig {
         applicationId = "com.silentsos.app"
         minSdk = 26
@@ -21,6 +31,10 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        buildConfigField("String", "CLOUDINARY_CLOUD_NAME", "\"$cloudinaryCloudName\"")
+        buildConfigField("String", "CLOUDINARY_SIGNATURE_ENDPOINT", "\"$cloudinarySignatureEndpoint\"")
+        buildConfigField("String", "CLOUDINARY_UNSIGNED_UPLOAD_PRESET", "\"$cloudinaryUnsignedUploadPreset\"")
     }
 
     buildTypes {
@@ -45,6 +59,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     packaging {
@@ -95,4 +110,10 @@ dependencies {
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.play.services)
+
+    implementation(libs.cloudinary.android)
+    implementation(libs.google.generativeai)
+
+    // Accompanist Permissions
+    implementation("com.google.accompanist:accompanist-permissions:0.37.3")
 }

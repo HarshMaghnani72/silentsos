@@ -68,7 +68,7 @@ fun AddContactScreen(
                 color = OnSurface
             )
             Text(
-                "Add a trusted individual to your safety network.",
+                "Add a trusted individual to your safety network using their full international phone number.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = OnSurfaceVariant
             )

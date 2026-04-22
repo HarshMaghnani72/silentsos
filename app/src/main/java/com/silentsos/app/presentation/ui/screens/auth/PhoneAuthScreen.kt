@@ -70,7 +70,7 @@ fun PhoneAuthScreen(
                 text = if (uiState.codeSent) {
                     "Enter the 6-digit code sent to\n${uiState.phoneNumber}"
                 } else {
-                    "Enter your phone number to continue"
+                    "Enter your phone number in international format to continue"
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = OnSurfaceVariant,
@@ -85,7 +85,7 @@ fun PhoneAuthScreen(
                     value = uiState.phoneNumber,
                     onValueChange = viewModel::updatePhoneNumber,
                     label = { Text("Phone Number") },
-                    placeholder = { Text("+1234567890") },
+                    placeholder = { Text("+15551234567") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
@@ -106,7 +106,7 @@ fun PhoneAuthScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(56.dp),
-                    enabled = !uiState.isLoading && uiState.phoneNumber.length >= 10 && activity != null,
+                    enabled = !uiState.isLoading && uiState.phoneNumber.startsWith("+") && uiState.phoneNumber.length >= 8 && activity != null,
                     shape = RoundedCornerShape(16.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Primary,
@@ -183,6 +183,23 @@ fun PhoneAuthScreen(
                         text = uiState.error!!,
                         modifier = Modifier.padding(16.dp),
                         color = MaterialTheme.colorScheme.onErrorContainer,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+
+            if (uiState.statusMessage != null) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Secondary.copy(alpha = 0.08f)
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        text = uiState.statusMessage!!,
+                        modifier = Modifier.padding(16.dp),
+                        color = OnSurface,
                         style = MaterialTheme.typography.bodySmall
                     )
                 }

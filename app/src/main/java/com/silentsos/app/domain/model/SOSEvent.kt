@@ -12,7 +12,9 @@ data class SOSEvent(
     val contactsNotified: List<String> = emptyList(),
     val startedAt: Long = System.currentTimeMillis(),
     val endedAt: Long? = null,
-    val isDuress: Boolean = false
+    val isDuress: Boolean = false,
+    val updatedAt: Long = System.currentTimeMillis(),
+    val resolutionMessage: String = ""
 )
 
 enum class TriggerType {
@@ -20,5 +22,5 @@ enum class TriggerType {
 }
 
 enum class SOSStatus {
-    PENDING, ACTIVE, CANCELLED, RESOLVED
+    PENDING, ACTIVE, ESCALATED, CANCELLED, RESOLVED
 }

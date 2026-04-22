@@ -1,5 +1,6 @@
 package com.silentsos.app.presentation.viewmodel
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.silentsos.app.domain.model.EmergencyContact
@@ -32,6 +33,10 @@ class ContactsViewModel @Inject constructor(
     private val deleteContactUseCase: DeleteContactUseCase
 ) : ViewModel() {
 
+    companion object {
+        private const val TAG = "ContactsViewModel"
+    }
+
     private val _uiState = MutableStateFlow(ContactsUiState())
     val uiState: StateFlow<ContactsUiState> = _uiState.asStateFlow()
 
@@ -42,8 +47,21 @@ class ContactsViewModel @Inject constructor(
     private fun loadContacts() {
         val userId = authRepository.currentUserId ?: return
         viewModelScope.launch {
-            getContactsUseCase(userId).collect { contacts ->
-                _uiState.value = _uiState.value.copy(contacts = contacts, isLoading = false)
+            try {
+                getContactsUseCase(userId)
+                    .catch { e ->
+                        Log.e(TAG, "Error loading contacts", e)
+                        emit(emptyList())
+                    }
+                    .collect { contacts ->
+                        _uiState.value = _uiState.value.copy(contacts = contacts, isLoading = false)
+                    }
+            } catch (e: Exception) {
+                Log.e(TAG, "Unexpected error loading contacts", e)
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = "Failed to load contacts: ${e.message}"
+                )
             }
         }
     }

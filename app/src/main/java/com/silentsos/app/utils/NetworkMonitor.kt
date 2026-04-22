@@ -9,19 +9,18 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Monitors network availability reactively.
- */
 @Singleton
 class NetworkMonitor @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
-    val isConnected: Flow<Boolean> = callbackFlow {
-        val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    private val connectivityManager =
+        context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
+    val isOnline: Flow<Boolean> = callbackFlow {
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 trySend(true)
@@ -30,31 +29,24 @@ class NetworkMonitor @Inject constructor(
             override fun onLost(network: Network) {
                 trySend(false)
             }
-
-            override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
-                val hasInternet = networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-                                  networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-                trySend(hasInternet)
-            }
         }
-
-        // Initial state
-        val initialNetwork = connectivityManager.activeNetwork
-        val initialCapabilities = connectivityManager.getNetworkCapabilities(initialNetwork)
-        val initialConnected = initialCapabilities?.let {
-            it.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-            it.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-        } ?: false
-        trySend(initialConnected)
 
         val request = NetworkRequest.Builder()
             .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             .build()
-
         connectivityManager.registerNetworkCallback(request, callback)
+
+        // Set initial state
+        trySend(checkCurrentNetwork())
 
         awaitClose {
             connectivityManager.unregisterNetworkCallback(callback)
         }
+    }.distinctUntilChanged()
+
+    private fun checkCurrentNetwork(): Boolean {
+        val activeNetwork = connectivityManager.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 }

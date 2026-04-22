@@ -39,7 +39,7 @@ class BootWorker @AssistedInject constructor(
             // Check if there's an active SOS event that needs to be resumed
             val activeEvent = sosRepository.getActiveSOSEvent(userId).firstOrNull()
 
-            if (activeEvent != null && activeEvent.status == SOSStatus.ACTIVE) {
+            if (activeEvent != null && activeEvent.status in setOf(SOSStatus.ACTIVE, SOSStatus.ESCALATED)) {
                 Log.d("BootWorker", "Found active SOS event after boot, resuming background services.")
                 
                 // Restart Foreground Services
@@ -55,6 +55,10 @@ class BootWorker @AssistedInject constructor(
                 }
                 appContext.startForegroundService(audioIntent)
             }
+            
+            // Always ensure trigger monitoring is active
+            com.silentsos.app.service.TriggerMonitorService.startService(appContext)
+
             return Result.success()
         } catch (e: Exception) {
             Log.e("BootWorker", "Error in boot worker", e)

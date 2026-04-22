@@ -1,5 +1,6 @@
 package com.silentsos.app.presentation.viewmodel
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.silentsos.app.domain.model.SOSEvent
@@ -22,6 +23,10 @@ class HistoryViewModel @Inject constructor(
     private val getSOSHistoryUseCase: GetSOSHistoryUseCase
 ) : ViewModel() {
 
+    companion object {
+        private const val TAG = "HistoryViewModel"
+    }
+
     private val _uiState = MutableStateFlow(HistoryUiState())
     val uiState: StateFlow<HistoryUiState> = _uiState.asStateFlow()
 
@@ -32,8 +37,18 @@ class HistoryViewModel @Inject constructor(
     private fun loadHistory() {
         val userId = authRepository.currentUserId ?: return
         viewModelScope.launch {
-            getSOSHistoryUseCase(userId).collect { events ->
-                _uiState.value = _uiState.value.copy(events = events, isLoading = false)
+            try {
+                getSOSHistoryUseCase(userId)
+                    .catch { e ->
+                        Log.e(TAG, "Error loading SOS history", e)
+                        emit(emptyList())
+                    }
+                    .collect { events ->
+                        _uiState.value = _uiState.value.copy(events = events, isLoading = false)
+                    }
+            } catch (e: Exception) {
+                Log.e(TAG, "Unexpected error loading history", e)
+                _uiState.value = _uiState.value.copy(isLoading = false)
             }
         }
     }

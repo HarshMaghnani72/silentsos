@@ -2,6 +2,7 @@ package com.silentsos.app.presentation.viewmodel
 
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.silentsos.app.domain.model.EmergencyContact
@@ -29,7 +30,8 @@ data class DashboardUiState(
     val networkStatus: String = "Checking…",
     val isSosTriggering: Boolean = false,
     val sosCountdownSeconds: Int = 0,
-    val sosError: String? = null
+    val sosError: String? = null,
+    val activeEventId: String? = null
 )
 
 @HiltViewModel
@@ -42,11 +44,16 @@ class DashboardViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context
 ) : ViewModel() {
 
+    companion object {
+        private const val TAG = "DashboardViewModel"
+    }
+
     private val _uiState = MutableStateFlow(DashboardUiState())
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
 
     private var countdownJob: Job? = null
     private var sosDelaySeconds: Int = 10
+    private var secretPin: String = ""
 
     init {
         loadContacts()
@@ -57,8 +64,17 @@ class DashboardViewModel @Inject constructor(
     private fun loadContacts() {
         val userId = authRepository.currentUserId ?: return
         viewModelScope.launch {
-            getContactsUseCase(userId).collect { contacts ->
-                _uiState.value = _uiState.value.copy(contacts = contacts)
+            try {
+                getContactsUseCase(userId)
+                    .catch { e ->
+                        Log.e(TAG, "Error loading contacts", e)
+                        emit(emptyList())
+                    }
+                    .collect { contacts ->
+                        _uiState.value = _uiState.value.copy(contacts = contacts)
+                    }
+            } catch (e: Exception) {
+                Log.e(TAG, "Unexpected error loading contacts", e)
             }
         }
     }
@@ -75,9 +91,12 @@ class DashboardViewModel @Inject constructor(
     /** Observes SOS delay setting for countdown duration. */
     private fun observeSettings() {
         viewModelScope.launch {
-            settingsRepository.getTriggerConfig().collect { config ->
-                sosDelaySeconds = config.sosDelaySeconds
-            }
+            settingsRepository.getTriggerConfig()
+                .catch { e -> Log.e(TAG, "Error loading settings", e) }
+                .collect { config ->
+                    sosDelaySeconds = config.sosDelaySeconds
+                    secretPin = config.secretPin
+                }
         }
     }
 
@@ -105,13 +124,22 @@ class DashboardViewModel @Inject constructor(
     }
 
     /** Cancels the SOS countdown before it fires. */
-    fun cancelSOSCountdown() {
+    fun cancelSOSCountdown(pin: String): Boolean {
+        if (pin != secretPin) {
+            _uiState.value = _uiState.value.copy(
+                sosError = "Incorrect secure PIN. SOS countdown continues."
+            )
+            return false
+        }
+
         countdownJob?.cancel()
         countdownJob = null
         _uiState.value = _uiState.value.copy(
             isSosTriggering = false,
-            sosCountdownSeconds = 0
+            sosCountdownSeconds = 0,
+            sosError = null
         )
+        return true
     }
 
     /** Executes the actual SOS trigger after countdown completes. */
@@ -127,13 +155,17 @@ class DashboardViewModel @Inject constructor(
 
         triggerSOSUseCase(userId, TriggerType.MANUAL).fold(
             onSuccess = { eventId ->
-                // Start foreground services for location tracking and audio recording
                 startSOSServices(eventId)
-                _uiState.value = _uiState.value.copy(isSosTriggering = false)
+                _uiState.value = _uiState.value.copy(
+                    isSosTriggering = false,
+                    sosCountdownSeconds = 0,
+                    activeEventId = eventId
+                )
             },
             onFailure = { error ->
                 _uiState.value = _uiState.value.copy(
                     isSosTriggering = false,
+                    sosCountdownSeconds = 0,
                     sosError = error.message ?: "Failed to trigger SOS"
                 )
             }
@@ -159,5 +191,9 @@ class DashboardViewModel @Inject constructor(
 
     fun clearError() {
         _uiState.value = _uiState.value.copy(sosError = null)
+    }
+
+    fun consumeActiveEventNavigation() {
+        _uiState.value = _uiState.value.copy(activeEventId = null)
     }
 }

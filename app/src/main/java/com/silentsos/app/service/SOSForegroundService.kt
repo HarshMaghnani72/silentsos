@@ -41,7 +41,15 @@ class SOSForegroundService : Service() {
         when (intent?.action) {
             ACTION_START -> {
                 eventId = intent.getStringExtra(EXTRA_EVENT_ID)
-                startForeground(NOTIFICATION_ID, buildNotification())
+                if (eventId.isNullOrBlank()) {
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    startForeground(NOTIFICATION_ID, buildNotification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+                } else {
+                    startForeground(NOTIFICATION_ID, buildNotification())
+                }
                 startLocationTracking()
             }
             ACTION_STOP -> {
@@ -68,13 +76,22 @@ class SOSForegroundService : Service() {
                         altitude = location.altitude,
                         timestamp = System.currentTimeMillis()
                     )
-                    sosRepository.addLocationUpdate(update)
+                    sosRepository.addLocationUpdate(update).getOrThrow()
+                    sosRepository.updateSOSEventLocation(
+                        eventId = eId,
+                        latitude = location.latitude,
+                        longitude = location.longitude
+                    ).getOrThrow()
                 }
             } catch (e: Exception) {
                 android.util.Log.e("SOSForeground", "Location tracking failed", e)
                 val eId = eventId
                 if (eId != null) {
-                    com.silentsos.app.worker.SOSRetryWorker.enqueue(this@SOSForegroundService, eId)
+                    com.silentsos.app.worker.SOSRetryWorker.enqueue(
+                        context = this@SOSForegroundService,
+                        eventId = eId,
+                        retryType = com.silentsos.app.worker.SOSRetryWorker.RetryType.LOCATION_UPDATE
+                    )
                 }
             }
         }
@@ -96,11 +113,13 @@ class SOSForegroundService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("System Service")
             .setContentText("Running in background")
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_stat_sos)
             .setOngoing(true)
             .setSilent(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setContentIntent(pendingIntent)
+            .setStyle(NotificationCompat.BigTextStyle().bigText("Running in background"))
             .build()
     }
 

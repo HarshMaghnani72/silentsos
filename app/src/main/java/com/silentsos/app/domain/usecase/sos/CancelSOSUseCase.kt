@@ -4,7 +4,6 @@ import android.util.Log
 import com.silentsos.app.domain.repository.AuthRepository
 import com.silentsos.app.domain.repository.SOSRepository
 import com.silentsos.app.service.SOSNotificationService
-import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 
 class CancelSOSUseCase @Inject constructor(
@@ -18,30 +17,29 @@ class CancelSOSUseCase @Inject constructor(
 
     suspend operator fun invoke(eventId: String): Result<Unit> {
         return try {
-            // Cancel the SOS event
-            val result = sosRepository.cancelSOSEvent(eventId)
-            
+            val result = sosRepository.resolveSOSEvent(
+                eventId = eventId,
+                resolutionMessage = "User entered their secure PIN and marked themselves safe."
+            )
+
             result.fold(
                 onSuccess = {
-                    // Get the event details to notify contacts
-                    val userId = authRepository.currentUserId
-                    if (userId != null) {
-                        val events = sosRepository.getSOSHistory(userId).first()
-                        val event = events.find { it.id == eventId }
-                        
-                        if (event != null) {
-                            // Notify contacts that SOS was cancelled
-                            notificationService.notifyStatusUpdate(
-                                event,
-                                "SOS has been cancelled. User is safe."
-                            )
-                        }
+                    val event = sosRepository.getSOSEvent(eventId).getOrNull()
+                    if (event != null && authRepository.currentUserId == event.userId) {
+                        notificationService.notifyStatusUpdate(
+                            event.copy(
+                                status = com.silentsos.app.domain.model.SOSStatus.RESOLVED,
+                                endedAt = System.currentTimeMillis(),
+                                resolutionMessage = "User entered their secure PIN and marked themselves safe."
+                            ),
+                            "SOS resolved. The user entered their secure PIN and marked themselves safe."
+                        )
                     }
-                    Log.i(TAG, "SOS event $eventId cancelled successfully")
+                    Log.i(TAG, "SOS event $eventId resolved successfully")
                     Result.success(Unit)
                 },
                 onFailure = { error ->
-                    Log.e(TAG, "Failed to cancel SOS event", error)
+                    Log.e(TAG, "Failed to resolve SOS event", error)
                     Result.failure(error)
                 }
             )

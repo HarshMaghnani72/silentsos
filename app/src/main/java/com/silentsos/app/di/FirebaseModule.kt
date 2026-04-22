@@ -1,7 +1,6 @@
 package com.silentsos.app.di
 
 import android.content.Context
-import android.util.Log
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import com.google.firebase.auth.FirebaseAuth
@@ -15,53 +14,31 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
+/**
+ * Provides Firebase service instances to the DI graph.
+ * All instances are non-nullable — if Firebase is not configured
+ * (missing google-services.json), the app will crash-fast at startup,
+ * which is preferable to subtle null-related bugs at runtime.
+ */
 @Module
 @InstallIn(SingletonComponent::class)
 object FirebaseModule {
 
     @Provides
     @Singleton
-    fun provideFirebaseAuth(): FirebaseAuth? {
-        return try {
-            FirebaseAuth.getInstance()
-        } catch (e: Exception) {
-            Log.e("FirebaseModule", "FirebaseAuth init failed: ${e.message}")
-            null
-        }
-    }
+    fun provideFirebaseAuth(): FirebaseAuth = FirebaseAuth.getInstance()
 
     @Provides
     @Singleton
-    fun provideFirestore(): FirebaseFirestore? {
-        return try {
-            FirebaseFirestore.getInstance()
-        } catch (e: Exception) {
-            Log.e("FirebaseModule", "FirebaseFirestore init failed: ${e.message}")
-            null
-        }
-    }
+    fun provideFirestore(): FirebaseFirestore = FirebaseFirestore.getInstance()
 
     @Provides
     @Singleton
-    fun provideFirebaseStorage(): FirebaseStorage? {
-        return try {
-            FirebaseStorage.getInstance()
-        } catch (e: Exception) {
-            Log.e("FirebaseModule", "FirebaseStorage init failed: ${e.message}")
-            null
-        }
-    }
+    fun provideFirebaseStorage(): FirebaseStorage = FirebaseStorage.getInstance()
 
     @Provides
     @Singleton
-    fun provideFirebaseMessaging(): FirebaseMessaging? {
-        return try {
-            FirebaseMessaging.getInstance()
-        } catch (e: Exception) {
-            Log.e("FirebaseModule", "FirebaseMessaging init failed: ${e.message}")
-            null
-        }
-    }
+    fun provideFirebaseMessaging(): FirebaseMessaging = FirebaseMessaging.getInstance()
 
     @Provides
     @Singleton

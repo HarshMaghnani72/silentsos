@@ -22,6 +22,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -41,11 +42,13 @@ fun HiddenDashboardScreen(
     viewModel: DashboardViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var showCancelDialog by remember { mutableStateOf(false) }
+    var cancelPin by remember { mutableStateOf("") }
 
-    // Navigate to Active SOS screen when countdown completes and SOS fired
-    LaunchedEffect(uiState.isSosTriggering, uiState.sosCountdownSeconds) {
-        if (!uiState.isSosTriggering && uiState.sosCountdownSeconds == 0 && uiState.sosError == null) {
-            // Check if SOS was just triggered (contacts > 0 means it worked)
+    LaunchedEffect(uiState.activeEventId) {
+        if (uiState.activeEventId != null) {
+            onSOSTriggered()
+            viewModel.consumeActiveEventNavigation()
         }
     }
 
@@ -82,6 +85,23 @@ fun HiddenDashboardScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             // ── Status Card ──
+            uiState.sosError?.let { error ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(TertiaryContainer.copy(alpha = 0.18f))
+                        .border(1.dp, TertiaryContainer.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                        .padding(20.dp)
+                ) {
+                    Text(
+                        text = error,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = OnTertiaryContainer
+                    )
+                }
+            }
+
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -151,7 +171,7 @@ fun HiddenDashboardScreen(
                         .weight(1f)
                         .clickable {
                             if (uiState.isSosTriggering) {
-                                viewModel.cancelSOSCountdown()
+                                showCancelDialog = true
                             } else {
                                 viewModel.triggerSOS()
                             }
@@ -339,6 +359,51 @@ fun HiddenDashboardScreen(
                 }
             }
         }
+    }
+
+    if (showCancelDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showCancelDialog = false
+                cancelPin = ""
+            },
+            title = { Text("Cancel SOS Countdown") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Enter your secure PIN to cancel the pending SOS activation.")
+                    OutlinedTextField(
+                        value = cancelPin,
+                        onValueChange = { cancelPin = it.filter(Char::isDigit).take(12) },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        label = { Text("Secure PIN") }
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val cancelled = viewModel.cancelSOSCountdown(cancelPin)
+                        cancelPin = ""
+                        if (cancelled) {
+                            showCancelDialog = false
+                        }
+                    }
+                ) {
+                    Text("Confirm")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showCancelDialog = false
+                        cancelPin = ""
+                    }
+                ) {
+                    Text("Keep Countdown")
+                }
+            }
+        )
     }
 }
 

@@ -2,6 +2,8 @@ package com.silentsos.app.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -18,24 +20,73 @@ import com.silentsos.app.presentation.ui.screens.settings.SettingsScreen
 import com.silentsos.app.presentation.ui.screens.settings.TriggerConfigScreen
 import com.silentsos.app.presentation.ui.screens.sos.ActiveSOSScreen
 import com.silentsos.app.presentation.viewmodel.AuthViewModel
+import com.silentsos.app.presentation.viewmodel.SOSViewModel
+import com.silentsos.app.presentation.ui.screens.SplashScreen
+
+import com.silentsos.app.presentation.ui.screens.auth.PermissionsScreen
 
 @Composable
 fun AppNavigation(
     navController: NavHostController,
     isAuthenticated: Boolean
 ) {
-    val startDestination = if (isAuthenticated) Screen.Calculator.route else Screen.PhoneAuth.route
+    val sosViewModel: SOSViewModel = hiltViewModel()
+    val sosState by sosViewModel.uiState.collectAsState()
+
+    // Single source of truth for navigation destination based on app state
+    LaunchedEffect(sosState.isInitializing, sosState.activeEvent, isAuthenticated) {
+        if (sosState.isInitializing) return@LaunchedEffect
+
+        val currentRoute = navController.currentBackStackEntry?.destination?.route
+
+        if (sosState.activeEvent != null) {
+            if (currentRoute != Screen.ActiveSOS.route) {
+                navController.navigate(Screen.ActiveSOS.route) {
+                    popUpTo(0) { inclusive = true }
+                }
+            }
+        } else if (!isAuthenticated) {
+            if (currentRoute != Screen.PhoneAuth.route) {
+                navController.navigate(Screen.PhoneAuth.route) {
+                    popUpTo(0) { inclusive = true }
+                }
+            }
+        } else {
+            // Logged in and no active SOS - proceed to normal entry (Permissions/Calculator)
+            if (currentRoute == Screen.Splash.route || currentRoute == null) {
+                navController.navigate(Screen.Permissions.route) {
+                    popUpTo(Screen.Splash.route) { inclusive = true }
+                }
+            }
+        }
+    }
 
     NavHost(
         navController = navController,
-        startDestination = startDestination
+        startDestination = Screen.Splash.route
     ) {
+        // ── Splash ──
+        composable(Screen.Splash.route) {
+            SplashScreen()
+        }
+
         // ── Authentication ──
         composable(Screen.PhoneAuth.route) {
             PhoneAuthScreen(
                 onAuthSuccess = {
-                    navController.navigate(Screen.Calculator.route) {
+                    navController.navigate(Screen.Permissions.route) {
                         popUpTo(Screen.PhoneAuth.route) { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        // ── Permissions ──
+        composable(Screen.Permissions.route) {
+            PermissionsScreen(
+                onPermissionsGranted = {
+                    navController.navigate(Screen.Calculator.route) {
+                        popUpTo(Screen.Permissions.route) { inclusive = true }
                     }
                 }
             )

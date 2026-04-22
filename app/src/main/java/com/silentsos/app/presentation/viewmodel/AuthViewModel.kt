@@ -2,8 +2,8 @@ package com.silentsos.app.presentation.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.silentsos.app.data.remote.firebase.FirebaseAuthDataSource
 import com.silentsos.app.domain.repository.AuthRepository
+import com.silentsos.app.utils.PhoneNumberFormatter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,27 +19,43 @@ data class AuthUiState(
     val error: String? = null,
     val isAuthenticated: Boolean = false,
     val verificationId: String? = null,
-    val needsActivityReference: Boolean = false
+    val statusMessage: String? = null
 )
 
+/**
+ * ViewModel for the Phone Auth screen.
+ * Depends only on domain-layer [AuthRepository] — no direct data-source injection.
+ */
 @HiltViewModel
 class AuthViewModel @Inject constructor(
-    private val authRepository: AuthRepository,
-    private val authDataSource: FirebaseAuthDataSource
+    private val authRepository: AuthRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AuthUiState())
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
 
     init {
-        // Check if already authenticated
-        _uiState.value = _uiState.value.copy(
-            isAuthenticated = authRepository.isAuthenticated
-        )
+        if (authRepository.isAuthenticated) {
+            viewModelScope.launch {
+                authRepository.syncCurrentUser().fold(
+                    onSuccess = {
+                        _uiState.value = _uiState.value.copy(
+                            isAuthenticated = true,
+                            phoneNumber = it.phoneNumber
+                        )
+                    },
+                    onFailure = {
+                        _uiState.value = _uiState.value.copy(
+                            error = it.message ?: "Unable to restore your session"
+                        )
+                    }
+                )
+            }
+        }
     }
 
     fun updatePhoneNumber(phone: String) {
-        _uiState.value = _uiState.value.copy(phoneNumber = phone, error = null)
+        _uiState.value = _uiState.value.copy(phoneNumber = phone, error = null, statusMessage = null)
     }
 
     fun updateOtpCode(code: String) {
@@ -48,6 +64,10 @@ class AuthViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Sends a verification code to the entered phone number.
+     * Requires an Activity reference for Firebase reCAPTCHA verification.
+     */
     fun sendVerificationCode(activity: android.app.Activity) {
         val phone = _uiState.value.phoneNumber.trim()
         if (phone.isEmpty() || phone.length < 10) {
@@ -55,22 +75,52 @@ class AuthViewModel @Inject constructor(
             return
         }
 
-        _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+        if (!PhoneNumberFormatter.isValidE164(phone)) {
+            _uiState.value = _uiState.value.copy(
+                error = "Enter your phone number in international format, for example +15551234567"
+            )
+            return
+        }
 
-        authDataSource.sendVerificationCode(
+        _uiState.value = _uiState.value.copy(
+            isLoading = true,
+            error = null,
+            statusMessage = "Sending verification code..."
+        )
+
+        authRepository.sendVerificationCode(
             phoneNumber = phone,
             activity = activity,
             onCodeSent = { verificationId ->
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     codeSent = true,
-                    verificationId = verificationId
+                    verificationId = verificationId,
+                    phoneNumber = PhoneNumberFormatter.sanitize(phone),
+                    statusMessage = "Code sent. If auto-detection does not complete, enter the SMS code manually."
+                )
+            },
+            onVerificationCompleted = { user ->
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    codeSent = false,
+                    isAuthenticated = true,
+                    phoneNumber = user.phoneNumber,
+                    otpCode = "",
+                    statusMessage = "Phone number verified automatically."
+                )
+            },
+            onCodeAutoRetrievalTimeout = {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    statusMessage = "Automatic SMS detection timed out. Enter the code manually to continue."
                 )
             },
             onError = { exception ->
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    error = exception.message ?: "Failed to send verification code"
+                    error = formatAuthError(exception),
+                    statusMessage = null
                 )
             }
         )
@@ -94,16 +144,18 @@ class AuthViewModel @Inject constructor(
 
         viewModelScope.launch {
             authRepository.verifyOtp(verificationId, code).fold(
-                onSuccess = { user ->
+                onSuccess = {
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        isAuthenticated = true
+                        isAuthenticated = true,
+                        statusMessage = "Phone number verified successfully."
                     )
                 },
                 onFailure = { exception ->
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        error = exception.message ?: "Verification failed"
+                        error = formatAuthError(exception),
+                        statusMessage = null
                     )
                 }
             )
@@ -121,5 +173,16 @@ class AuthViewModel @Inject constructor(
 
     fun clearError() {
         _uiState.value = _uiState.value.copy(error = null)
+    }
+
+    private fun formatAuthError(exception: Throwable): String {
+        val message = exception.message.orEmpty()
+        return when {
+            "DEVELOPER_ERROR" in message || "Unknown calling package name" in message ->
+                "Phone auth is blocked by Firebase configuration. Add the app's SHA-1 and SHA-256 fingerprints for com.silentsos.app in Firebase Console, then download the updated google-services.json."
+            "timeout" in message.lowercase() ->
+                "SMS auto-detection timed out. You can still enter the OTP manually."
+            else -> message.ifBlank { "Verification failed" }
+        }
     }
 }
