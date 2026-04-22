@@ -137,6 +137,20 @@ class SOSViewModel @Inject constructor(
         }
     }
 
+    private fun ensureSOSServicesRunning(eventId: String) {
+        val sosIntent = Intent(appContext, SOSForegroundService::class.java).apply {
+            action = SOSForegroundService.ACTION_START
+            putExtra(SOSForegroundService.EXTRA_EVENT_ID, eventId)
+        }
+        appContext.startForegroundService(sosIntent)
+
+        val audioIntent = Intent(appContext, AudioRecordingService::class.java).apply {
+            action = AudioRecordingService.ACTION_START
+            putExtra(AudioRecordingService.EXTRA_EVENT_ID, eventId)
+        }
+        appContext.startForegroundService(audioIntent)
+    }
+
     private fun observeContacts() {
         val userId = authRepository.currentUserId ?: return
         viewModelScope.launch {
@@ -178,6 +192,7 @@ class SOSViewModel @Inject constructor(
                         )
 
                         if (event != null) {
+                            ensureSOSServicesRunning(event.id)
                             _uiState.value = _uiState.value.copy(
                                 currentLatitude = event.latitude,
                                 currentLongitude = event.longitude,

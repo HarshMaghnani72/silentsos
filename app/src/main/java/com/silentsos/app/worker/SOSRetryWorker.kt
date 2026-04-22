@@ -158,7 +158,7 @@ class SOSRetryWorker @AssistedInject constructor(
 
         val audioUrl = sosRepository.uploadAudioRecording(eventId, localFilePath).getOrThrow()
         sosRepository.attachAudioRecording(eventId, audioUrl).getOrThrow()
-        recording.delete()
+        Log.i(TAG, "Uploaded audio for event $eventId and kept the local copy at $localFilePath")
     }
 
     enum class RetryType {

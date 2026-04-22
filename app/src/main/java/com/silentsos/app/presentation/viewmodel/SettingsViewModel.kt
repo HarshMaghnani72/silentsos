@@ -2,6 +2,8 @@ package com.silentsos.app.presentation.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.silentsos.app.data.local.AppStateStore
+import com.silentsos.app.data.local.LocalRecordingStore
 import com.silentsos.app.domain.model.AutoDeletePeriod
 import com.silentsos.app.domain.model.DisguiseType
 import com.silentsos.app.domain.model.TriggerConfig
@@ -18,13 +20,17 @@ data class SettingsUiState(
     val triggerConfig: TriggerConfig = TriggerConfig(),
     val activeDisguise: DisguiseType = DisguiseType.CALCULATOR,
     val isLocationSharingEnabled: Boolean = true,
-    val autoDeletePeriod: AutoDeletePeriod = AutoDeletePeriod.TWENTY_FOUR_HOURS
+    val autoDeletePeriod: AutoDeletePeriod = AutoDeletePeriod.TWENTY_FOUR_HOURS,
+    val profilePhoneNumber: String = "",
+    val profileDisplayName: String = ""
 )
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val authRepository: AuthRepository,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    private val appStateStore: AppStateStore,
+    private val localRecordingStore: LocalRecordingStore
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -32,12 +38,15 @@ class SettingsViewModel @Inject constructor(
 
     init {
         observeSettings()
+        observeCachedProfile()
+        refreshProfile()
     }
 
     /** Observes persisted settings from DataStore and keeps UI state in sync. */
     private fun observeSettings() {
         viewModelScope.launch {
             settingsRepository.getTriggerConfig().collect { config ->
+                localRecordingStore.cleanupExpiredRecordings(config.autoDeleteRecordings)
                 _uiState.value = _uiState.value.copy(
                     triggerConfig = config,
                     isLocationSharingEnabled = config.locationSharingEnabled,
@@ -49,6 +58,24 @@ class SettingsViewModel @Inject constructor(
             settingsRepository.getActiveDisguise().collect { disguise ->
                 _uiState.value = _uiState.value.copy(activeDisguise = disguise)
             }
+        }
+    }
+
+    private fun observeCachedProfile() {
+        viewModelScope.launch {
+            appStateStore.cachedUserProfile.collect { profile ->
+                _uiState.value = _uiState.value.copy(
+                    profilePhoneNumber = profile?.phoneNumber.orEmpty(),
+                    profileDisplayName = profile?.displayName.orEmpty()
+                )
+            }
+        }
+    }
+
+    private fun refreshProfile() {
+        if (!authRepository.isAuthenticated) return
+        viewModelScope.launch {
+            authRepository.syncCurrentUser()
         }
     }
 
@@ -77,6 +104,7 @@ class SettingsViewModel @Inject constructor(
     fun updateAutoDeletePeriod(period: AutoDeletePeriod) {
         val config = _uiState.value.triggerConfig.copy(autoDeleteRecordings = period)
         _uiState.value = _uiState.value.copy(autoDeletePeriod = period)
+        localRecordingStore.cleanupExpiredRecordings(period)
         updateAndPersistConfig(config)
     }
 

@@ -2,12 +2,14 @@ package com.silentsos.app.presentation.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.silentsos.app.data.local.AppStateStore
 import com.silentsos.app.domain.repository.AuthRepository
 import com.silentsos.app.utils.PhoneNumberFormatter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -28,7 +30,8 @@ data class AuthUiState(
  */
 @HiltViewModel
 class AuthViewModel @Inject constructor(
-    private val authRepository: AuthRepository
+    private val authRepository: AuthRepository,
+    private val appStateStore: AppStateStore
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AuthUiState())
@@ -36,7 +39,12 @@ class AuthViewModel @Inject constructor(
 
     init {
         if (authRepository.isAuthenticated) {
+            _uiState.value = _uiState.value.copy(isAuthenticated = true)
             viewModelScope.launch {
+                val cachedProfile = appStateStore.cachedUserProfile.first()
+                if (cachedProfile != null) {
+                    _uiState.value = _uiState.value.copy(phoneNumber = cachedProfile.phoneNumber)
+                }
                 authRepository.syncCurrentUser().fold(
                     onSuccess = {
                         _uiState.value = _uiState.value.copy(
@@ -46,6 +54,7 @@ class AuthViewModel @Inject constructor(
                     },
                     onFailure = {
                         _uiState.value = _uiState.value.copy(
+                            isAuthenticated = true,
                             error = it.message ?: "Unable to restore your session"
                         )
                     }

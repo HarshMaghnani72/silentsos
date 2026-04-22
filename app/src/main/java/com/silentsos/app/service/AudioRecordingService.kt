@@ -2,16 +2,28 @@ package com.silentsos.app.service
 
 import android.app.*
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.media.MediaRecorder
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.silentsos.app.R
+import com.silentsos.app.data.local.AppStateStore
+import com.silentsos.app.data.local.LocalRecordingStore
 import dagger.hilt.android.AndroidEntryPoint
 import java.io.File
+import javax.inject.Inject
+import kotlinx.coroutines.runBlocking
 
 @AndroidEntryPoint
 class AudioRecordingService : Service() {
+
+    @Inject
+    lateinit var appStateStore: AppStateStore
+
+    @Inject
+    lateinit var localRecordingStore: LocalRecordingStore
 
     private var mediaRecorder: MediaRecorder? = null
     private var outputFile: File? = null
@@ -34,36 +46,62 @@ class AudioRecordingService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> {
-                eventId = intent.getStringExtra(EXTRA_EVENT_ID)
-                if (eventId.isNullOrBlank()) {
+                val resolvedEventId = intent.getStringExtra(EXTRA_EVENT_ID)
+                    ?: runBlocking { appStateStore.getActiveRecordingEventId() }
+                if (resolvedEventId.isNullOrBlank()) {
                     stopSelf()
                     return START_NOT_STICKY
                 }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    startForeground(NOTIFICATION_ID, buildNotification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
-                } else {
-                    startForeground(NOTIFICATION_ID, buildNotification())
+                if (eventId != resolvedEventId && mediaRecorder != null) {
+                    stopRecording()
+                    enqueueRecordingUpload()
                 }
+                eventId = resolvedEventId
+                runBlocking { appStateStore.setActiveRecordingEventId(resolvedEventId) }
+                startServiceForeground()
                 startRecording()
             }
             ACTION_STOP -> {
                 stopRecording()
                 enqueueRecordingUpload()
+                runBlocking { appStateStore.setActiveRecordingEventId(null) }
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
+            }
+            else -> {
+                val restoredEventId = runBlocking { appStateStore.getActiveRecordingEventId() }
+                if (restoredEventId.isNullOrBlank()) {
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
+                eventId = restoredEventId
+                startServiceForeground()
+                startRecording()
             }
         }
         return START_STICKY
     }
 
+    private fun startServiceForeground() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            startForeground(
+                NOTIFICATION_ID,
+                buildNotification(),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, buildNotification())
+        }
+    }
+
     @Suppress("DEPRECATION")
     private fun startRecording() {
         if (mediaRecorder != null) return
+        val activeEventId = eventId ?: return
         uploadEnqueued = false
 
         try {
-            val dir = File(filesDir, "recordings").apply { mkdirs() }
-            outputFile = File(dir, "sos_${System.currentTimeMillis()}.m4a")
+            outputFile = localRecordingStore.createRecordingFile(activeEventId)
 
             mediaRecorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 MediaRecorder(this)
@@ -80,7 +118,7 @@ class AudioRecordingService : Service() {
                 start()
             }
         } catch (e: Exception) {
-            android.util.Log.e("AudioRecording", "Failed to start recording", e)
+            Log.e("AudioRecording", "Failed to start recording", e)
         }
     }
 
@@ -89,12 +127,12 @@ class AudioRecordingService : Service() {
         try {
             recorder.stop()
         } catch (e: Exception) {
-            android.util.Log.e("AudioRecording", "Failed to stop recording", e)
+            Log.e("AudioRecording", "Failed to stop recording", e)
         } finally {
             try {
                 recorder.release()
             } catch (e: Exception) {
-                android.util.Log.w("AudioRecording", "Failed to release recorder", e)
+                Log.w("AudioRecording", "Failed to release recorder", e)
             }
             mediaRecorder = null
         }
@@ -106,7 +144,7 @@ class AudioRecordingService : Service() {
 
         if (uploadEnqueued) return
         if (!file.exists() || file.length() <= 0L) {
-            android.util.Log.w("AudioRecording", "Skipping empty recording for event $eId")
+            Log.w("AudioRecording", "Skipping empty recording for event $eId")
             file.delete()
             return
         }
@@ -118,7 +156,7 @@ class AudioRecordingService : Service() {
             retryType = com.silentsos.app.worker.SOSRetryWorker.RetryType.AUDIO_UPLOAD,
             filePath = file.absolutePath
         )
-        android.util.Log.i("AudioRecording", "Queued recording upload for event $eId")
+        Log.i("AudioRecording", "Queued recording upload for event $eId at ${file.absolutePath}")
     }
 
     private fun buildNotification(): Notification {
@@ -157,6 +195,22 @@ class AudioRecordingService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        val activeEventId = eventId ?: runBlocking { appStateStore.getActiveRecordingEventId() }
+        if (!activeEventId.isNullOrBlank()) {
+            val restartIntent = Intent(this, AudioRecordingService::class.java).apply {
+                action = ACTION_START
+                putExtra(EXTRA_EVENT_ID, activeEventId)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(restartIntent)
+            } else {
+                startService(restartIntent)
+            }
+        }
+        super.onTaskRemoved(rootIntent)
+    }
 
     override fun onDestroy() {
         if (mediaRecorder != null) {

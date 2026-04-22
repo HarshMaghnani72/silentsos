@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import com.silentsos.app.MainActivity
 import com.silentsos.app.R
@@ -21,6 +22,8 @@ class TriggerMonitorService : Service() {
 
     @Inject
     lateinit var sosTriggerMonitor: SOSTriggerMonitor
+
+    private var wakeLock: PowerManager.WakeLock? = null
 
     companion object {
         private const val CHANNEL_ID = "trigger_monitor_channel"
@@ -43,28 +46,43 @@ class TriggerMonitorService : Service() {
             val intent = Intent(context, TriggerMonitorService::class.java).apply {
                 action = ACTION_STOP
             }
-            context.stopService(intent)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
         }
     }
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = powerManager.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "SilentSOS:TriggerMonitor"
+        ).apply {
+            setReferenceCounted(false)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> {
                 startServiceForeground()
+                acquireWakeLock()
                 sosTriggerMonitor.start()
             }
             ACTION_STOP -> {
+                sosTriggerMonitor.stop()
                 stopForeground(STOP_FOREGROUND_REMOVE)
+                releaseWakeLock()
                 stopSelf()
             }
             else -> {
                 // If system restarts the service
                 startServiceForeground()
+                acquireWakeLock()
                 sosTriggerMonitor.start()
             }
         }
@@ -118,4 +136,23 @@ class TriggerMonitorService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        Companion.startService(this)
+        super.onTaskRemoved(rootIntent)
+    }
+
+    override fun onDestroy() {
+        sosTriggerMonitor.stop()
+        releaseWakeLock()
+        super.onDestroy()
+    }
+
+    private fun acquireWakeLock() {
+        wakeLock?.takeIf { !it.isHeld }?.acquire()
+    }
+
+    private fun releaseWakeLock() {
+        wakeLock?.takeIf { it.isHeld }?.release()
+    }
 }

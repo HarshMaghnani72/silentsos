@@ -2,27 +2,37 @@ package com.silentsos.app.service
 
 import android.app.*
 import android.content.Intent
-import android.os.IBinder
 import android.os.Build
+import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
-import com.google.android.gms.location.*
 import com.silentsos.app.MainActivity
 import com.silentsos.app.R
+import com.silentsos.app.data.local.AppStateStore
 import com.silentsos.app.domain.model.LocationUpdate
 import com.silentsos.app.domain.repository.LocationRepository
 import com.silentsos.app.domain.repository.SOSRepository
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.*
 import javax.inject.Inject
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 @AndroidEntryPoint
 class SOSForegroundService : Service() {
 
     @Inject lateinit var locationRepository: LocationRepository
     @Inject lateinit var sosRepository: SOSRepository
+    @Inject lateinit var appStateStore: AppStateStore
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var eventId: String? = null
+    private var trackingJob: Job? = null
 
     companion object {
         const val CHANNEL_ID = "sos_channel"
@@ -40,29 +50,53 @@ class SOSForegroundService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> {
-                eventId = intent.getStringExtra(EXTRA_EVENT_ID)
-                if (eventId.isNullOrBlank()) {
+                val resolvedEventId = intent.getStringExtra(EXTRA_EVENT_ID)
+                    ?: runBlocking { appStateStore.getActiveSosEventId() }
+                if (resolvedEventId.isNullOrBlank()) {
                     stopSelf()
                     return START_NOT_STICKY
                 }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    startForeground(NOTIFICATION_ID, buildNotification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
-                } else {
-                    startForeground(NOTIFICATION_ID, buildNotification())
-                }
+                eventId = resolvedEventId
+                runBlocking { appStateStore.setActiveSosEventId(resolvedEventId) }
+                startServiceForeground()
                 startLocationTracking()
             }
             ACTION_STOP -> {
                 stopLocationTracking()
+                runBlocking { appStateStore.setActiveSosEventId(null) }
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
+            }
+            else -> {
+                val restoredEventId = runBlocking { appStateStore.getActiveSosEventId() }
+                if (restoredEventId.isNullOrBlank()) {
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
+                eventId = restoredEventId
+                startServiceForeground()
+                startLocationTracking()
             }
         }
         return START_STICKY
     }
 
+    private fun startServiceForeground() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                NOTIFICATION_ID,
+                buildNotification(),
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, buildNotification())
+        }
+    }
+
     private fun startLocationTracking() {
-        serviceScope.launch {
+        if (trackingJob?.isActive == true) return
+
+        trackingJob = serviceScope.launch {
             try {
                 locationRepository.getLocationUpdates(intervalMs = 10_000L).collect { location ->
                     val eId = eventId ?: return@collect
@@ -84,7 +118,7 @@ class SOSForegroundService : Service() {
                     ).getOrThrow()
                 }
             } catch (e: Exception) {
-                android.util.Log.e("SOSForeground", "Location tracking failed", e)
+                Log.e("SOSForeground", "Location tracking failed", e)
                 val eId = eventId
                 if (eId != null) {
                     com.silentsos.app.worker.SOSRetryWorker.enqueue(
@@ -99,7 +133,9 @@ class SOSForegroundService : Service() {
 
     private fun stopLocationTracking() {
         locationRepository.stopLocationUpdates()
-        serviceScope.cancel()
+        trackingJob?.cancel()
+        trackingJob = null
+        serviceScope.coroutineContext.cancelChildren()
     }
 
     private fun buildNotification(): Notification {
@@ -140,8 +176,25 @@ class SOSForegroundService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        val activeEventId = eventId ?: runBlocking { appStateStore.getActiveSosEventId() }
+        if (!activeEventId.isNullOrBlank()) {
+            val restartIntent = Intent(this, SOSForegroundService::class.java).apply {
+                action = ACTION_START
+                putExtra(EXTRA_EVENT_ID, activeEventId)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(restartIntent)
+            } else {
+                startService(restartIntent)
+            }
+        }
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
+        trackingJob?.cancel()
         super.onDestroy()
-        serviceScope.cancel()
+        serviceScope.coroutineContext.cancelChildren()
     }
 }

@@ -83,6 +83,41 @@ fun SettingsScreen(
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
+            SettingsSection(title = "PROFILE") {
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(SurfaceContainerHighest),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Person, contentDescription = null, tint = Primary)
+                        }
+                        Column {
+                            Text(
+                                uiState.profileDisplayName.ifBlank { "Protected user" },
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontFamily = ManropeFontFamily,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = OnSurface
+                            )
+                            Text(
+                                uiState.profilePhoneNumber.ifBlank { "Phone profile sync will appear here" },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = OnSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
             // ══ Section: Stealth Triggers ══
             SettingsSection(title = "STEALTH TRIGGERS") {
                 GlassCard(modifier = Modifier.fillMaxWidth()) {

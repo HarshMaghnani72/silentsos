@@ -168,6 +168,7 @@ fun IncidentHistoryScreen(
                     filteredEvents.forEach { event ->
                         val (icon, iconTint, title) = getEventVisuals(event)
                         val pillText = event.status.name
+                        val hasLocalAudio = event.id in uiState.eventsWithLocalAudio
                         val pillType = when (event.status) {
                             SOSStatus.ACTIVE -> PillType.SUCCESS
                             SOSStatus.CANCELLED -> PillType.NEUTRAL
@@ -187,6 +188,7 @@ fun IncidentHistoryScreen(
                             iconTint = iconTint,
                             title = title,
                             subtitle = subtitle,
+                            detail = if (hasLocalAudio) "Audio saved on this device" else null,
                             pillText = pillText,
                             pillType = pillType
                         )
@@ -234,6 +236,7 @@ private fun HistoryListItem(
     iconTint: Color,
     title: String,
     subtitle: String,
+    detail: String?,
     pillText: String,
     pillType: PillType
 ) {
@@ -271,6 +274,14 @@ private fun HistoryListItem(
                         color = OnSurface
                     )
                     Text(subtitle, style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariant)
+                    if (detail != null) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            detail,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Secondary
+                        )
+                    }
                 }
             }
             Row(

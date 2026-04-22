@@ -14,6 +14,7 @@ import com.silentsos.app.utils.sensors.ShakeDetector
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.firstOrNull
@@ -36,18 +37,30 @@ class SOSTriggerMonitor @Inject constructor(
     private var currentConfig: TriggerConfig? = null
     private var hasStarted = false
     private var lastTriggerAt = 0L
+    private var settingsObserverJob: Job? = null
 
     fun start() {
         if (hasStarted) return
         hasStarted = true
 
-        scope.launch {
+        settingsObserverJob = scope.launch {
             settingsRepository.getTriggerConfig().collect { config ->
                 currentConfig = config
                 configurePowerButtonDetector(config)
                 configureShakeDetector(config)
             }
         }
+    }
+
+    fun stop() {
+        settingsObserverJob?.cancel()
+        settingsObserverJob = null
+        powerButtonDetector?.stop()
+        powerButtonDetector = null
+        shakeDetector?.stop()
+        shakeDetector = null
+        currentConfig = null
+        hasStarted = false
     }
 
     private fun configurePowerButtonDetector(config: TriggerConfig) {
